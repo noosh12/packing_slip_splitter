@@ -8,13 +8,11 @@ monday_input = 'routes__1907__Canberra, New South Wales.csv'
 pdf_input = 'OrderlyPrint Part 1.pdf'
 
 inputs_dir = 'inputs'
-csv_inputs = []
-pdf_inputs = []
+csv_input_files = []
+pdf_input_files = []
 
-monday_deliveries = {}
-sunday_deliveries = {}
-monday_drivers = []
-sunday_drivers = []
+deliveries = {}
+drivers = []
 exports = {}
 pdf_inputs = {}
 order_pages = {}
@@ -26,8 +24,9 @@ required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"]
 def process_deliveries_input(input_filename):
     driver_index = -1
     id_index = -1
+    print("processing  " + input_filename)
 
-    with open(input_filename) as csv_file:
+    with open(inputs_dir + '/' + input_filename) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         
@@ -42,10 +41,16 @@ def process_deliveries_input(input_filename):
             if not row[id_index]:
                 continue
             
-            if row[driver_index] not in sunday_drivers:
-                sunday_drivers.append("Sunday_" + row[driver_index])
-            sunday_deliveries[order_id] = "Sunday_" + row[driver_index]
-    # print(len(sunday_deliveries))
+            if row[driver_index] not in drivers:
+                drivers.append(input_filename + "__" + row[driver_index])
+            deliveries[order_id] = input_filename + "__" + row[driver_index]
+    # print(len(deliveries))
+    print(" done")
+
+def process_deliveries_inputs():
+    
+    for input_file in csv_input_files:
+        process_deliveries_input(input_file)
 
 def process_header_row(header_row):
     col_index = 0
@@ -62,20 +67,31 @@ def process_header_row(header_row):
     return id_index, driver_index
 
 def create_pdf_exports():
-    for driver in sunday_drivers:
+    for driver in drivers:
         exports[driver] = PdfFileWriter()
-    # print(sunday_drivers)
-    print(len(sunday_drivers))
-    print(len(exports))
-    for key in exports:
-        print(key)
+    # # print(drivers)
+    # print(len(drivers))
+    # print(len(exports))
+    # for key in exports:
+    #     print(key)
 
-def create_pdf_inputs():
-    pdf_inputs[pdf_input] = open(pdf_input, 'rb')
+def open_pdf_inputs():
+    for pdf in pdf_input_files:
+        pdf_inputs[pdf] = open((inputs_dir + '/' + pdf), 'rb')
+        # print(pdf)
+
+    # pdf_inputs[pdf_input] = open(pdf_input, 'rb')
 
 def close_pdf_inputs():
-    pdf_inputs[pdf_input].close()
-    
+    # pdf_inputs[pdf_input].close()
+    for pdf in pdf_inputs.values():
+        pdf.close()
+
+def process_pdf_inputs():
+    for pdf in pdf_inputs:
+        print("processing  " + pdf)
+        process_pdf_input(pdf_inputs[pdf])
+
 def process_pdf_input(pdf_file):
 
     current_order_id = "PLACEHOLDER"
@@ -97,28 +113,33 @@ def process_pdf_input(pdf_file):
         # Check to see if order id looks valid
         id_looks_valid = len(order_id) < 12 and "#" in order_id
 
+        # todo FIX BELOW!!!!!!!!!!!!!!!!!!|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
         # First page of order
         if order_id and id_looks_valid and contains_keywords:
             order_pages[order_id] = str(page_num)
             # print("ADDED " + order_pages[order_id])
             current_order_id = order_id
-            if order_id in sunday_deliveries:
-                driver = sunday_deliveries[order_id]
+            if order_id in deliveries:
+                driver = deliveries[order_id]
                 exports[driver].addPage(page)
             continue
 
         # Not first page
         order_pages[current_order_id] = order_pages[current_order_id] + "," + str(page_num)
-        if order_id in sunday_deliveries:
-            driver = sunday_deliveries[order_id]
+        if order_id in deliveries:
+            driver = deliveries[order_id]
             # print(driver)
             exports[driver].addPage(page)
+        # else:
+        #     print('WARNING: Found valid id in input pdf not in deliveries csv')
+        #     print(order_id)
 
         # Keywords found but unable to find order id
         if contains_keywords:
             print('ERROR: Unable to find Order ID on page ' + page_num)
 
-    print("||||||||||||||||||||||||||||||||")
+    print(" done")
     # for order in order_pages:
     #     print(order + " - " + order_pages[order])
 
@@ -132,23 +153,26 @@ def find_inputs_from_subdir(suffix, path_to_dir=inputs_dir):
     return [ filename for filename in filenames if filename.endswith( suffix ) ]
 
 def scan_for_inputs():
-    csv_inputs = find_inputs_from_subdir(".csv")
-    pdf_inputs = find_inputs_from_subdir(".pdf")
+    global csv_input_files
+    global pdf_input_files
+    csv_input_files = find_inputs_from_subdir(".csv")
+    pdf_input_files = find_inputs_from_subdir(".pdf")
 
-    for name in csv_inputs:
+    for name in csv_input_files:
         print("csv file: " + name)
-    for name in pdf_inputs:
+    for name in pdf_input_files:
         print("pdf file: " + name)
 
 def main():
 
     scan_for_inputs()
     
-    process_deliveries_input('routes__1907__Canberra, New South Wales.csv')
+    process_deliveries_inputs()
     create_pdf_exports()
 
-    create_pdf_inputs()
-    process_pdf_input(pdf_inputs[pdf_input])
+    open_pdf_inputs()
+    # process_pdf_input(pdf_inputs[pdf_input])
+    process_pdf_inputs()
 
     close_pdf_exports()
     close_pdf_inputs()
