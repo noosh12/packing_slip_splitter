@@ -4,8 +4,8 @@ import re
 import csv
 from os import listdir
 
-monday_input = 'routes__1907__Canberra, New South Wales.csv'
-pdf_input = 'OrderlyPrint Part 1.pdf'
+# monday_input = 'routes__1907__Canberra, New South Wales.csv'
+# pdf_input = 'OrderlyPrint Part 1.pdf'
 
 inputs_dir = 'inputs'
 csv_input_files = []
