@@ -2,9 +2,14 @@ import PyPDF2
 from PyPDF2 import PdfFileReader, PdfFileWriter
 import re
 import csv
+from os import listdir
 
 monday_input = 'routes__1907__Canberra, New South Wales.csv'
 pdf_input = 'OrderlyPrint Part 1.pdf'
+
+inputs_dir = 'inputs'
+csv_inputs = []
+pdf_inputs = []
 
 monday_deliveries = {}
 sunday_deliveries = {}
@@ -122,7 +127,22 @@ def close_pdf_exports():
         with open(driver + '.pdf', 'wb') as outfile:
             exports[driver].write(outfile)
 
+def find_inputs_from_subdir(suffix, path_to_dir=inputs_dir):
+    filenames = listdir(path_to_dir)
+    return [ filename for filename in filenames if filename.endswith( suffix ) ]
+
+def scan_for_inputs():
+    csv_inputs = find_inputs_from_subdir(".csv")
+    pdf_inputs = find_inputs_from_subdir(".pdf")
+
+    for name in csv_inputs:
+        print("csv file: " + name)
+    for name in pdf_inputs:
+        print("pdf file: " + name)
+
 def main():
+
+    scan_for_inputs()
     
     process_deliveries_input('routes__1907__Canberra, New South Wales.csv')
     create_pdf_exports()
