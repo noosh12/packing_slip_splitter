@@ -4,19 +4,21 @@ import re
 import csv
 from os import listdir
 
-# monday_input = 'routes__1907__Canberra, New South Wales.csv'
-# pdf_input = 'OrderlyPrint Part 1.pdf'
-
+## GLOBAL VARIABLES ##
 inputs_dir = 'inputs'
-csv_input_files = []
-pdf_input_files = []
+pickups_pdf_filename = 'pickups'
+error_pdf_filename = 'errors'
+contains_errors = False
 
-deliveries = {}
-drivers = []
-exports = {}
-pdf_inputs = {}
+csv_input_filenames = []
+pdf_input_filenames = []
+
+order_drivers = {} # key: order_id =, val: filename + driver
+driver_export_filenames = [] # filename + driver
+pdf_export_files = {}
+pdf_input_files = {}
 order_pages = {}
-# order_regex = "Order #(.*)"
+## GLOBAL VARIABLES END ##
 
 # only appear in first page of Order
 required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"] 
@@ -41,16 +43,15 @@ def process_deliveries_input(input_filename):
             if not row[id_index]:
                 continue
             
-            if row[driver_index] not in drivers:
-                drivers.append(input_filename + "__" + row[driver_index])
-            deliveries[order_id] = input_filename + "__" + row[driver_index]
+            if row[driver_index] not in driver_export_filenames:
+                driver_export_filenames.append(input_filename + "__" + row[driver_index])
+            order_drivers[order_id] = input_filename + "__" + row[driver_index]
     # print(len(deliveries))
     print(" done")
 
-def process_deliveries_inputs():
-    
-    for input_file in csv_input_files:
-        process_deliveries_input(input_file)
+def process_csv_inputs():
+    for input_filename in csv_input_filenames:
+        process_deliveries_input(input_filename)
 
 def process_header_row(header_row):
     col_index = 0
@@ -67,35 +68,32 @@ def process_header_row(header_row):
     return id_index, driver_index
 
 def create_pdf_exports():
-    for driver in drivers:
-        exports[driver] = PdfFileWriter()
-    # # print(drivers)
-    # print(len(drivers))
-    # print(len(exports))
-    # for key in exports:
-    #     print(key)
+    for driver_filename in driver_export_filenames:
+        pdf_export_files[driver_filename] = PdfFileWriter()
+    
+    pdf_export_files['pickup'] = PdfFileWriter()
+
+def create_error_pdf_export():
+    pdf_export_files['error'] = PdfFileWriter()
+    contains_errors = True
+    # TODO create unknown pdf
 
 def open_pdf_inputs():
-    for pdf in pdf_input_files:
-        pdf_inputs[pdf] = open((inputs_dir + '/' + pdf), 'rb')
-        # print(pdf)
-
-    # pdf_inputs[pdf_input] = open(pdf_input, 'rb')
+    for pdf_filename in pdf_input_filenames:
+        pdf_input_files[pdf_filename] = open((inputs_dir + '/' + pdf_filename), 'rb')
 
 def close_pdf_inputs():
-    # pdf_inputs[pdf_input].close()
-    for pdf in pdf_inputs.values():
-        pdf.close()
+    for pdf_file in pdf_input_files.values():
+        pdf_file.close()
 
 def process_pdf_inputs():
-    for pdf in pdf_inputs:
-        print("processing  " + pdf)
-        process_pdf_input(pdf_inputs[pdf])
+    for pdf_filename in pdf_input_files:
+        print("processing  " + pdf_filename)
+        process_pdf_input(pdf_input_files[pdf_filename])
 
 def process_pdf_input(pdf_file):
 
     current_order_id = "PLACEHOLDER"
-    # pdfFileObject = open(pdf_input, 'rb')
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
     print(" No. Of Pages :", pdfReader.numPages)
 
@@ -113,24 +111,24 @@ def process_pdf_input(pdf_file):
         # Check to see if order id looks valid
         id_looks_valid = len(order_id) < 12 and "#" in order_id
 
-        # todo FIX BELOW!!!!!!!!!!!!!!!!!!|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+        # TODO redo code below
 
         # First page of order
         if order_id and id_looks_valid and contains_keywords:
             order_pages[order_id] = str(page_num)
             # print("ADDED " + order_pages[order_id])
             current_order_id = order_id
-            if order_id in deliveries:
-                driver = deliveries[order_id]
-                exports[driver].addPage(page)
+            if order_id in order_drivers:
+                driver = order_drivers[order_id]
+                pdf_export_files[driver].addPage(page)
             continue
 
         # Not first page
         order_pages[current_order_id] = order_pages[current_order_id] + "," + str(page_num)
-        if order_id in deliveries:
-            driver = deliveries[order_id]
+        if order_id in order_drivers:
+            driver = order_drivers[order_id]
             # print(driver)
-            exports[driver].addPage(page)
+            pdf_export_files[driver].addPage(page)
         # else:
         #     print('WARNING: Found valid id in input pdf not in deliveries csv')
         #     print(order_id)
@@ -144,37 +142,51 @@ def process_pdf_input(pdf_file):
     #     print(order + " - " + order_pages[order])
 
 def close_pdf_exports():
-    for driver in exports:
+    for driver in pdf_export_files:
         with open(driver + '.pdf', 'wb') as outfile:
-            exports[driver].write(outfile)
+            pdf_export_files[driver].write(outfile)
 
 def find_inputs_from_subdir(suffix, path_to_dir=inputs_dir):
     filenames = listdir(path_to_dir)
     return [ filename for filename in filenames if filename.endswith( suffix ) ]
 
 def scan_for_inputs():
-    global csv_input_files
-    global pdf_input_files
-    csv_input_files = find_inputs_from_subdir(".csv")
-    pdf_input_files = find_inputs_from_subdir(".pdf")
+    global csv_input_filenames
+    global pdf_input_filenames
+    csv_input_filenames = find_inputs_from_subdir(".csv")
+    pdf_input_filenames = find_inputs_from_subdir(".pdf")
 
-    for name in csv_input_files:
-        print("csv file: " + name)
-    for name in pdf_input_files:
-        print("pdf file: " + name)
+    print(str(len(csv_input_filenames)) + " csv input files found: " + str(csv_input_filenames))
+    print(str(len(pdf_input_filenames)) + " pdf input files found: " + str(pdf_input_filenames))
+
+    if not csv_input_filenames:
+        print("ERROR: No csv input files found!!")
+        exit()
+    if not pdf_input_filenames:
+        print("ERROR: No pdf input files found!!")
+        exit()
 
 def main():
-
+    # Search inputs folder for pdf and csv files
     scan_for_inputs()
-    
-    process_deliveries_inputs()
+
+    # Read and process csv files
+    process_csv_inputs()
+
+    # Open pdf input files
+    open_pdf_inputs()
+
+    # Create pdf files for exports
     create_pdf_exports()
 
-    open_pdf_inputs()
-    # process_pdf_input(pdf_inputs[pdf_input])
+    # Read pdf input and copy orders into correct export
     process_pdf_inputs()
 
+    # Close off pdf exports
     close_pdf_exports()
+
+    # Close off pdf inputs
+    # Must be done after closing off pdf exports
     close_pdf_inputs()
 
 if __name__ == "__main__":
