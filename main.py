@@ -195,6 +195,29 @@ def scan_for_inputs():
         print("ERROR: No pdf input files found!!")
         exit()
 
+def create_reports():
+
+    print('Creation Action Report')
+    with open('_action_report.csv', 'w') as file:
+        filewriter = csv.writer(file)
+        filewriter.writerow(['Input PDF', 'Page num', 'Order ID', 'Export PDF', 'Action'])
+        for row in actions:
+            filewriter.writerow(row)
+            # print(row)
+    print(' done')
+
+    if errors:
+        print('Creation ERROR Report')
+        with open('_error_report.csv', 'w') as file:
+            filewriter = csv.writer(file)
+            filewriter.writerow(['Input PDF', 'Page num', 'Order ID', 'Export PDF', 'Action'])
+            for row in errors:
+                filewriter.writerow(row)
+                # print(row)
+        print(' done')
+    else:
+        print('No errors')
+
 def main():
     # Search inputs folder for pdf and csv files
     scan_for_inputs()
@@ -217,6 +240,8 @@ def main():
     # Close off pdf inputs
     # Must be done after closing off pdf exports
     close_pdf_inputs()
+
+    create_reports()
 
 if __name__ == "__main__":
     # execute only if run as a script
