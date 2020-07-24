@@ -7,11 +7,15 @@ from os import listdir
 ## GLOBAL VARIABLES ##
 inputs_dir = 'inputs'
 pickups_pdf_filename = 'pickups'
-error_pdf_filename = 'errors'
+# error_pdf_filename = 'errors'
 contains_errors = False
+contains_unknown = False
 
 csv_input_filenames = []
 pdf_input_filenames = []
+
+errors = []
+actions = []
 
 order_drivers = {} # key: order_id =, val: filename + driver
 driver_export_filenames = [] # filename + driver
@@ -21,7 +25,8 @@ order_pages = {}
 ## GLOBAL VARIABLES END ##
 
 # only appear in first page of Order
-required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"] 
+required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"]
+pickup_keywords = ["pickup", "pick up", "pick-up"] 
 
 def process_deliveries_input(input_filename):
     driver_index = -1
@@ -47,11 +52,13 @@ def process_deliveries_input(input_filename):
                 driver_export_filenames.append(input_filename + "__" + row[driver_index])
             order_drivers[order_id] = input_filename + "__" + row[driver_index]
     # print(len(deliveries))
+
     print(" done")
 
 def process_csv_inputs():
     for input_filename in csv_input_filenames:
         process_deliveries_input(input_filename)
+    order_drivers['ERROR'] = 'ERRORS'
 
 def process_header_row(header_row):
     col_index = 0
@@ -71,12 +78,17 @@ def create_pdf_exports():
     for driver_filename in driver_export_filenames:
         pdf_export_files[driver_filename] = PdfFileWriter()
     
-    pdf_export_files['pickup'] = PdfFileWriter()
+    pdf_export_files['pickups'] = PdfFileWriter()
 
 def create_error_pdf_export():
-    pdf_export_files['error'] = PdfFileWriter()
+    pdf_export_files['ERRORS'] = PdfFileWriter()
+    global contains_errors
     contains_errors = True
-    # TODO create unknown pdf
+
+def create_unknown_pdf_export():
+    pdf_export_files['UNKNOWN'] = PdfFileWriter()
+    global contains_unknown
+    contains_unknown = True
 
 def open_pdf_inputs():
     for pdf_filename in pdf_input_filenames:
@@ -89,13 +101,15 @@ def close_pdf_inputs():
 def process_pdf_inputs():
     for pdf_filename in pdf_input_files:
         print("processing  " + pdf_filename)
-        process_pdf_input(pdf_input_files[pdf_filename])
+        process_pdf_input(pdf_input_files[pdf_filename], pdf_filename)
 
-def process_pdf_input(pdf_file):
+def process_pdf_input(pdf_file, filename):
 
     current_order_id = "PLACEHOLDER"
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
     print(" No. Of Pages :", pdfReader.numPages)
+
+    # TODO add/refactor order_pages
 
     for page_index in range(pdfReader.numPages):
         page = pdfReader.getPage(page_index)
@@ -111,31 +125,46 @@ def process_pdf_input(pdf_file):
         # Check to see if order id looks valid
         id_looks_valid = len(order_id) < 12 and "#" in order_id
 
-        # TODO redo code below
+        driver = 'UNKNOWN'
 
-        # First page of order
-        if order_id and id_looks_valid and contains_keywords:
-            order_pages[order_id] = str(page_num)
-            # print("ADDED " + order_pages[order_id])
-            current_order_id = order_id
-            if order_id in order_drivers:
-                driver = order_drivers[order_id]
-                pdf_export_files[driver].addPage(page)
-            continue
-
-        # Not first page
-        order_pages[current_order_id] = order_pages[current_order_id] + "," + str(page_num)
-        if order_id in order_drivers:
-            driver = order_drivers[order_id]
-            # print(driver)
-            pdf_export_files[driver].addPage(page)
-        # else:
-        #     print('WARNING: Found valid id in input pdf not in deliveries csv')
-        #     print(order_id)
-
-        # Keywords found but unable to find order id
+        # # First page
         if contains_keywords:
-            print('ERROR: Unable to find Order ID on page ' + page_num)
+            if order_id and id_looks_valid:
+                current_order_id = order_id
+                # print('first page GOOD')
+            else:
+                print('first page BAD')
+                # current_order_id = 'ERROR'
+                errors.append('Unable to find Order ID on ' +
+                    str(page_num) + ' in file: ' + filename)
+                # driver = 'ERRORS'
+                current_order_id = 'ERROR'
+        
+        if current_order_id in order_drivers:
+            driver = order_drivers[current_order_id]
+        else:
+            shipping_method = text[text.find("Shipping Method")+len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+            if shipping_method:
+                shipping_method = shipping_method.lower()
+                if any(x in shipping_method for x in pickup_keywords):
+                    driver = "pickups"
+
+        action = 'Added successfully'
+        if driver == "ERRORS": 
+            action = 'ERROR: Unable to find Order ID from the first page of order'
+            errors.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
+            if not contains_errors:
+                create_error_pdf_export()
+        if driver == "UNKNOWN":
+            action = 'CAUTION: Order ID not found in delivery input files'
+            if not contains_unknown:
+                create_unknown_pdf_export()
+
+        pdf_export_files[driver].addPage(page)
+
+        actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
+        # print(filename + ',' + str(page_num) + ',' + current_order_id + ',' + driver + '.pdf,' + action)
+
 
     print(" done")
     # for order in order_pages:
