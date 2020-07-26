@@ -4,9 +4,11 @@ import re
 import csv
 from os import listdir
 import os
+import sys
 
-## GLOBAL VARIABLES ##
-inputs_dir = 'inputs'
+## GLOBAL VARIABLES START ##
+inputs_folder = 'inputs/'
+execution_dir = ''
 contains_errors = False
 contains_unknown = False
 contains_pickups = False
@@ -33,7 +35,7 @@ def process_deliveries_input(input_filename):
     id_index = -1
     print("processing  " + input_filename)
 
-    with open(inputs_dir + '/' + input_filename) as csv_file:
+    with open(execution_dir + inputs_folder + input_filename) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         
@@ -92,7 +94,7 @@ def create_unknown_pdf_export():
 
 def open_pdf_inputs():
     for pdf_filename in pdf_input_filenames:
-        pdf_input_files[pdf_filename] = open((inputs_dir + '/' + pdf_filename), 'rb')
+        pdf_input_files[pdf_filename] = open((execution_dir + inputs_folder + pdf_filename), 'rb')
 
 def close_pdf_inputs():
     for pdf_file in pdf_input_files.values():
@@ -154,8 +156,6 @@ def process_pdf_input(pdf_file, filename):
                             create_unknown_pdf_export()
             # order id is invalid - ERRORED page
             else:
-                # errors.append('Unable to find Order ID on ' +
-                #     str(page_num) + ' in file: ' + filename)
                 driver = 'ERROR'
                 current_order_id = 'ERROR'
                 action = 'ERROR: Unable to find Order ID from the first page of order'
@@ -174,11 +174,11 @@ def process_pdf_input(pdf_file, filename):
 
 def close_pdf_exports():
     for driver in pdf_export_files:
-        with open(driver + '.pdf', 'wb') as outfile:
+        with open(execution_dir + driver + '.pdf', 'wb') as outfile:
             pdf_export_files[driver].write(outfile)
 
-def find_inputs_from_subdir(suffix, path_to_dir=inputs_dir):
-    filenames = listdir(path_to_dir)
+def find_inputs_from_subdir(suffix):
+    filenames = listdir(execution_dir+inputs_folder)
     return [ filename for filename in filenames if filename.endswith( suffix ) ]
 
 def scan_for_inputs():
@@ -200,7 +200,6 @@ def scan_for_inputs():
         exit()
 
 def create_reports():
-
     print('Creation Action Report')
     with open('_action_report.csv', 'w') as file:
         filewriter = csv.writer(file)
@@ -222,8 +221,21 @@ def create_reports():
     else:
         print('No errors')
 
+def get_directory():
+    global execution_dir
+    if getattr(sys, 'frozen', False):
+        # we are running in a bundle
+        execution_dir = '/'.join(sys.executable.split('/')[:-1]) + '/'
+    else:
+        # we are running in a normal Python environment
+        execution_dir = os.getcwd() + '/'
+    print('Corrected directory: ' + execution_dir)
+
+
 def main():
-    print(os.getcwd())
+    # single click app or python file?
+    get_directory()
+    
     # Search inputs folder for pdf and csv files
     scan_for_inputs()
 
