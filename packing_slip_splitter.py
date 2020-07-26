@@ -226,13 +226,19 @@ def get_directory():
     if getattr(sys, 'frozen', False):
         # we are running in a bundle
         execution_dir = '/'.join(sys.executable.split('/')[:-1]) + '/'
+        print('Running as a single-click app / bundle')
     else:
         # we are running in a normal Python environment
         execution_dir = os.getcwd() + '/'
-    print('Corrected directory: ' + execution_dir)
+        print('Running as a Python file')
 
+    print('Corrected directory is: ' + execution_dir)
 
 def main():
+    print('----------------------------------------')
+    print('---- Starting packing_slip_splitter ----')
+    print('----------------------------------------')
+
     # single click app or python file?
     get_directory()
     
@@ -259,6 +265,10 @@ def main():
     close_pdf_inputs()
 
     create_reports()
+
+    print('----------------------------------------')
+    print('---- Finished packing_slip_splitter ----')
+    print('----------------------------------------')
 
 if __name__ == "__main__":
     # execute only if run as a script
