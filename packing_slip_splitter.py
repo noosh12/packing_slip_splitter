@@ -189,6 +189,8 @@ def scan_for_inputs():
     global pdf_input_filenames
     csv_input_filenames = find_inputs_from_subdir(".csv")
     pdf_input_filenames = find_inputs_from_subdir(".pdf")
+    csv_input_filenames.reverse()
+    pdf_input_filenames.reverse()
 
     print(str(len(csv_input_filenames)) + " csv input files found: " + str(csv_input_filenames))
     print(str(len(pdf_input_filenames)) + " pdf input files found: " + str(pdf_input_filenames))
