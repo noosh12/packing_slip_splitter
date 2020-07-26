@@ -129,7 +129,7 @@ def process_pdf_input(pdf_file, filename):
 
         # # First page
         if contains_keywords:
-            
+
             # order id is valid
             if order_id and id_looks_valid:
                 current_order_id = order_id
@@ -154,8 +154,8 @@ def process_pdf_input(pdf_file, filename):
                             create_unknown_pdf_export()
             # order id is invalid - ERRORED page
             else:
-                errors.append('Unable to find Order ID on ' +
-                    str(page_num) + ' in file: ' + filename)
+                # errors.append('Unable to find Order ID on ' +
+                #     str(page_num) + ' in file: ' + filename)
                 driver = 'ERROR'
                 current_order_id = 'ERROR'
                 action = 'ERROR: Unable to find Order ID from the first page of order'
