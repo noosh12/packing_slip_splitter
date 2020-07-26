@@ -5,6 +5,7 @@ import csv
 from os import listdir
 import os
 import sys
+from time import sleep
 
 ## GLOBAL VARIABLES START ##
 inputs_folder = 'inputs/'
@@ -54,7 +55,7 @@ def process_deliveries_input(input_filename):
                 driver_export_filenames.append(input_filename + "__" + row[driver_index])
             order_drivers[order_id] = input_filename + "__" + row[driver_index]
 
-    print(" done")
+    print("  Done!")
 
 def process_csv_inputs():
     for input_filename in csv_input_filenames:
@@ -110,9 +111,16 @@ def process_pdf_input(pdf_file, filename):
     current_driver = "UNKNOWN"
 
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
-    print(" No. Of Pages :", pdfReader.numPages)
+    print("  No. Of Pages :", pdfReader.numPages)
+    n_bar = 50
 
     for page_index in range(pdfReader.numPages):
+        # Progress bar update
+        j = (page_index + 1) / pdfReader.numPages
+        sys.stdout.write('\r')
+        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%")
+        sys.stdout.flush()
+
         page = pdfReader.getPage(page_index)
         text = page.extractText().replace('\n','')
         page_num = page_index +1
@@ -170,7 +178,7 @@ def process_pdf_input(pdf_file, filename):
         pdf_export_files[driver].addPage(page)
         actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
 
-    print(" done")
+    print("\n  Done!")
 
 def close_pdf_exports():
     for driver in pdf_export_files:
@@ -189,15 +197,20 @@ def scan_for_inputs():
     csv_input_filenames.reverse()
     pdf_input_filenames.reverse()
 
-    print(str(len(csv_input_filenames)) + " csv input files found: " + str(csv_input_filenames))
-    print(str(len(pdf_input_filenames)) + " pdf input files found: " + str(pdf_input_filenames))
-
     if not csv_input_filenames:
         print("ERROR: No csv input files found!!")
         exit()
     if not pdf_input_filenames:
         print("ERROR: No pdf input files found!!")
         exit()
+
+    print(str(len(csv_input_filenames)) + " csv input files found: ")
+    for filename in csv_input_filenames:
+        print("  " + filename)
+
+    print(str(len(pdf_input_filenames)) + " pdf input files found: ")
+    for filename in pdf_input_filenames:
+        print("  " + filename)
 
 def create_reports():
     print('Creation Action Report')
@@ -207,7 +220,7 @@ def create_reports():
         for row in actions:
             filewriter.writerow(row)
             # print(row)
-    print(' done')
+    print('  Done!')
 
     if errors:
         print('Creation ERROR Report')
@@ -217,27 +230,27 @@ def create_reports():
             for row in errors:
                 filewriter.writerow(row)
                 # print(row)
-        print(' done')
+        print('  Done!')
     else:
-        print('No errors')
+        print('No errors recorded..')
 
 def get_directory():
     global execution_dir
     if getattr(sys, 'frozen', False):
         # we are running in a bundle
         execution_dir = '/'.join(sys.executable.split('/')[:-1]) + '/'
-        print('Running as a single-click app / bundle')
+        print('Running as a single-click app (bundle)')
     else:
         # we are running in a normal Python environment
         execution_dir = os.getcwd() + '/'
         print('Running as a Python file')
 
-    print('Corrected directory is: ' + execution_dir)
+    print('Corrected directory is:\n  ' + execution_dir)
 
 def main():
-    print('----------------------------------------')
-    print('---- Starting packing_slip_splitter ----')
-    print('----------------------------------------')
+    print('------------------------------------------------------------')
+    print('-------------- Starting packing_slip_splitter --------------')
+    print('------------------------------------------------------------')
 
     # single click app or python file?
     get_directory()
@@ -266,9 +279,9 @@ def main():
 
     create_reports()
 
-    print('----------------------------------------')
-    print('---- Finished packing_slip_splitter ----')
-    print('----------------------------------------')
+    print('------------------------------------------------------------')
+    print('-------------- Finished packing_slip_splitter --------------')
+    print('------------------------------------------------------------')
 
 if __name__ == "__main__":
     # execute only if run as a script
