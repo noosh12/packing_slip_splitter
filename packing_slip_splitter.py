@@ -129,38 +129,35 @@ def process_pdf_input(pdf_file, filename):
 
         # # First page
         if contains_keywords:
-            is_first_page = True
-
+            
+            # order id is valid
             if order_id and id_looks_valid:
                 current_order_id = order_id
-
                 #  order in deliveries csv
                 if order_id in order_drivers:
                     driver = order_drivers[order_id]
-
                 # order NOT in deliveries csv
                 else:
-                    # order is UNKNOWN
-                    driver = 'UNKNOWN'
                     shipping_method = text[text.find("Shipping Method") +
                         len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
-                    
                     # order is a PICKUP
                     if shipping_method and any(x in shipping_method.lower() for x in pickup_keywords):
                         driver = "pickups"
                         action = 'Not in deliveries and Shipping text found: ' + shipping_method
                         if not contains_pickups:
                             create_pickups_pdf_export()
+                    # order is UNKNOWN
                     else:
+                        driver = 'UNKNOWN'
                         action = 'CAUTION: Order ID not found in delivery input files'
                         if not contains_unknown:
                             create_unknown_pdf_export()
+            # order id is invalid - ERRORED page
             else:
                 errors.append('Unable to find Order ID on ' +
                     str(page_num) + ' in file: ' + filename)
                 driver = 'ERROR'
                 current_order_id = 'ERROR'
-
                 action = 'ERROR: Unable to find Order ID from the first page of order'
                 errors.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
                 if not contains_errors:
