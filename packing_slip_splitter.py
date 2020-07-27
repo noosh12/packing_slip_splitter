@@ -30,6 +30,67 @@ order_pages = {}
 required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"]
 pickup_keywords = ["pickup", "pick up", "pick-up"] 
 
+def get_directory():
+    print('Determining current execution method...')
+    global execution_dir
+    if getattr(sys, 'frozen', False):
+        # we are running in a bundle
+        execution_dir = '/'.join(sys.executable.split('/')[:-1]) + '/'
+        print('  Done! Running as a single-click app (bundle)')
+    else:
+        # we are running in a normal Python environment
+        execution_dir = os.getcwd() + '/'
+        print('  Done! Running as a Python file')
+    print('  Corrected directory is:\n  ' + execution_dir)
+
+    print('Checking if inputs folder exists in Corrected directory...')
+    if os.path.exists(execution_dir + inputs_folder):
+        print('  Success!')
+    else:
+        print('  ERROR! There is no inputs folder in the Corrected directory.')
+        print('  Please create a folder named \'' + inputs_folder[:-1] + '\'')
+        print('  The folder containing the input files should be:')
+        print('    ' + execution_dir + inputs_folder)
+        print('  exiting...')
+        exit()
+
+def scan_for_inputs():
+    print('Searching for input files...')
+    
+    global csv_input_filenames
+    global pdf_input_filenames
+    csv_input_filenames = find_inputs_from_subdir(".csv")
+    pdf_input_filenames = find_inputs_from_subdir(".pdf")
+    
+    if not csv_input_filenames:
+        print("  ERROR: No csv input files found!!")
+        print('  exiting...')
+        exit()
+    if not pdf_input_filenames:
+        print("  ERROR: No pdf input files found!!")
+        print('  exiting...')
+        exit()
+
+    print('  Done!')
+    csv_input_filenames.reverse()
+    pdf_input_filenames.reverse()
+
+    print('  ' + str(len(csv_input_filenames)) + " csv input files found: ")
+    for filename in csv_input_filenames:
+        print("    " + filename)
+
+    print('  ' + str(len(pdf_input_filenames)) + " pdf input files found: ")
+    for filename in pdf_input_filenames:
+        print("    " + filename)
+
+def find_inputs_from_subdir(suffix):
+    filenames = listdir(execution_dir+inputs_folder)
+    return [ filename for filename in filenames if filename.endswith( suffix ) ]
+
+def process_csv_inputs():
+    for input_filename in csv_input_filenames:
+        process_csv_input(input_filename)
+
 def process_csv_input(input_filename):
     driver_index = -1
     id_index = -1
@@ -59,10 +120,6 @@ def process_csv_input(input_filename):
     print('  Done!')
     print('  ' + str(order_count) + ' delivery orders added')
     print('  ' + str(len(order_drivers)) + ' Total')
-
-def process_csv_inputs():
-    for input_filename in csv_input_filenames:
-        process_csv_input(input_filename)
 
 def process_header_row(header_row):
     col_index = 0
@@ -191,39 +248,6 @@ def close_pdf_exports():
         print('    ' + driver + '.pdf')
     print('  Done!')
 
-def find_inputs_from_subdir(suffix):
-    filenames = listdir(execution_dir+inputs_folder)
-    return [ filename for filename in filenames if filename.endswith( suffix ) ]
-
-def scan_for_inputs():
-    print('Searching for input files...')
-    
-    global csv_input_filenames
-    global pdf_input_filenames
-    csv_input_filenames = find_inputs_from_subdir(".csv")
-    pdf_input_filenames = find_inputs_from_subdir(".pdf")
-    
-    if not csv_input_filenames:
-        print("  ERROR: No csv input files found!!")
-        print('  exiting...')
-        exit()
-    if not pdf_input_filenames:
-        print("  ERROR: No pdf input files found!!")
-        print('  exiting...')
-        exit()
-
-    print('  Done!')
-    csv_input_filenames.reverse()
-    pdf_input_filenames.reverse()
-
-    print('  ' + str(len(csv_input_filenames)) + " csv input files found: ")
-    for filename in csv_input_filenames:
-        print("    " + filename)
-
-    print('  ' + str(len(pdf_input_filenames)) + " pdf input files found: ")
-    for filename in pdf_input_filenames:
-        print("    " + filename)
-
 def create_reports():
     print('Creating Action Report...')
     with open(execution_dir + '_action_report.csv', 'w') as file:
@@ -245,30 +269,6 @@ def create_reports():
         print('  Done!')
     else:
         print('Completed with no errors... No Error report to create!')
-
-def get_directory():
-    print('Determining current execution method...')
-    global execution_dir
-    if getattr(sys, 'frozen', False):
-        # we are running in a bundle
-        execution_dir = '/'.join(sys.executable.split('/')[:-1]) + '/'
-        print('  Done! Running as a single-click app (bundle)')
-    else:
-        # we are running in a normal Python environment
-        execution_dir = os.getcwd() + '/'
-        print('  Done! Running as a Python file')
-    print('  Corrected directory is:\n  ' + execution_dir)
-
-    print('Checking if inputs folder exists in Corrected directory...')
-    if os.path.exists(execution_dir + inputs_folder):
-        print('  Success!')
-    else:
-        print('  ERROR! There is no inputs folder in the Corrected directory.')
-        print('  Please create a folder named \'' + inputs_folder[:-1] + '\'')
-        print('  The folder containing the input files should be:')
-        print('    ' + execution_dir + inputs_folder)
-        print('  exiting...')
-        exit()
 
 def main():
     print('--------------------------------------------------------------')
