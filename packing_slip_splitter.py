@@ -1,8 +1,6 @@
 import PyPDF2
-from PyPDF2 import PdfFileReader, PdfFileWriter
 import re
 import csv
-from os import listdir
 import os
 import sys
 
@@ -84,7 +82,7 @@ def scan_for_inputs():
         print("    " + filename)
 
 def find_inputs_from_subdir(suffix):
-    filenames = listdir(execution_dir+inputs_folder)
+    filenames = os.listdir(execution_dir+inputs_folder)
     return [ filename for filename in filenames if filename.endswith( suffix ) ]
 
 def process_csv_inputs():
@@ -95,8 +93,8 @@ def process_csv_input(input_filename):
     driver_index = -1
     id_index = -1
     print("Processing:  " + input_filename)
-
-    with open(execution_dir + inputs_folder + input_filename) as csv_file:
+    full_filepath = execution_dir + inputs_folder + input_filename
+    with open(full_filepath, 'r', encoding='mac_roman', newline='') as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         order_count = 0
@@ -136,20 +134,20 @@ def process_header_row(header_row):
 
 def create_pdf_exports():
     for driver_filename in driver_export_filenames:
-        pdf_export_files[driver_filename] = PdfFileWriter()
+        pdf_export_files[driver_filename] = PyPDF2.PdfFileWriter()
 
 def create_pickups_pdf_export():
-    pdf_export_files['pickups'] = PdfFileWriter()
+    pdf_export_files['pickups'] = PyPDF2.PdfFileWriter()
     global contains_pickups
     contains_pickups = True
 
 def create_error_pdf_export():
-    pdf_export_files['ERRORS'] = PdfFileWriter()
+    pdf_export_files['ERRORS'] = PyPDF2.PdfFileWriter()
     global contains_errors
     contains_errors = True
 
 def create_unknown_pdf_export():
-    pdf_export_files['UNKNOWN'] = PdfFileWriter()
+    pdf_export_files['UNKNOWN'] = PyPDF2.PdfFileWriter()
     global contains_unknown
     contains_unknown = True
 
