@@ -9,6 +9,8 @@ __pycache__/
 *.csv
 *.DS_Store
 *.spec
+*.json
+*.zip
 build/
 dist/
 inputs/
