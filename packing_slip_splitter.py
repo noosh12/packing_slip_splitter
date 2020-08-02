@@ -3,6 +3,11 @@ import re
 import csv
 import os
 import sys
+# import slate3k
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore")
+    import slate3k
 
 ## GLOBAL VARIABLES START ##
 inputs_folder = 'inputs/'
@@ -171,47 +176,66 @@ def process_pdf_input(pdf_file, filename):
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
     print("  No. Of Pages :", pdfReader.numPages)
     n_bar = 50
+    warnings.filterwarnings("ignore", message="Too many boxes") 
+    
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        # code that produces a warning
+        with open(execution_dir + inputs_folder + filename, 'rb') as f:
+            doc = slate3k.PDF(f)
+            # print(len(doc))
+            # print(doc[0])
 
     for page_index in range(pdfReader.numPages):
         # Progress bar update
-        j = (page_index + 1) / pdfReader.numPages
-        sys.stdout.write('\r')
-        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%")
-        sys.stdout.flush()
+        # j = (page_index + 1) / pdfReader.numPages
+        # sys.stdout.write('\r')
+        # sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%")
+        # sys.stdout.flush()
+        order_id = ''
+        
+        for line in doc[page_index].splitlines():
+            if not line:
+                continue
+            if len(line) < 10 and len(line) > 5 and '#' in line:
+                order_id = line
+                break
 
         page = pdfReader.getPage(page_index)
-        text = page.extractText().replace('\n','')
+        # text = page.extractText().replace('\n','')
         page_num = page_index +1
 
-        # Check to see if the page contains all the keywords found on first page of orders
-        contains_keywords = all(x in text for x in required_keywords)
+        # print(text)
 
-        # Get text between 'Order ' and 'Date' and remove newlines
-        order_id = text[text.find("Order ")+len("Order "):text.rfind("Date")].replace('\n','')
+        # # Check to see if the page contains all the keywords found on first page of orders
+        # contains_keywords = all(x in text for x in required_keywords)
+
+        # # Get text between 'Order ' and 'Date' and remove newlines
+        # order_id = '#' + text[text.find("#")+len("#"):text.rfind("Order")].replace('\n','')
         
-        # Check to see if order id looks valid
-        id_looks_valid = len(order_id) < 12 and "#" in order_id
+        # # Check to see if order id looks valid
+        # id_looks_valid = len(order_id) < 12 and "#" in order_id
 
         driver = 'UNKNOWN'
         action = 'Added successfully'
 
-        # # First page
-        if contains_keywords:
+        # # # First page
+        if order_id:
 
             # order id is valid
-            if order_id and id_looks_valid:
+            if order_id:
                 current_order_id = order_id
                 #  order in deliveries csv
                 if order_id in order_drivers:
                     driver = order_drivers[order_id]
                 # order NOT in deliveries csv
                 else:
-                    shipping_method = text[text.find("Shipping Method") +
-                        len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+                    # shipping_method = text[text.find("Shipping Method") +
+                    #     len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
                     # order is a PICKUP
-                    if shipping_method and any(x in shipping_method.lower() for x in pickup_keywords):
+                    if 'PICKUP' in doc[page_index]:
                         driver = "pickups"
-                        action = 'Not in deliveries and Shipping text found: ' + shipping_method
+                        action = 'Not in deliveries and Shipping text found: ' + 'PICKUP'
                         if not contains_pickups:
                             create_pickups_pdf_export()
                     # order is UNKNOWN
@@ -237,6 +261,7 @@ def process_pdf_input(pdf_file, filename):
         actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
 
     print("\n  Done!")
+    print(len(doc))
 
 def close_pdf_exports():
     print(str(len(pdf_export_files))+ ' Export pdfs to create.\n  Creating... ')
