@@ -6,6 +6,14 @@ import sys
 import time
 from fpdf import FPDF
 
+class Order:
+    def __init__(self, order_id, input_file, driver):
+        self.order_id = order_id
+        self.input_file = input_file
+        self.driver = driver
+        self.export_file = input_file[:-4] + "__" + driver
+
+
 ## GLOBAL VARIABLES START ##
 inputs_folder = 'inputs/'
 exports_folder = 'exports/'
@@ -21,7 +29,7 @@ pdf_input_filenames = []
 errors = []
 actions = []
 
-order_drivers = {} # key: order_id =, val: filename + driver
+order_data = {} # key: order_id =, val: Order object
 
 driver_export_filenames = [] # filename + driver
 pdf_export_files = {}
@@ -117,12 +125,18 @@ def process_csv_input(input_filename):
             
             if row[driver_index] not in driver_export_filenames:
                 driver_export_filenames.append(input_filename[:-4] + "__" + row[driver_index])
-            order_drivers[order_id] = input_filename[:-4] + "__" + row[driver_index]
+            # order_drivers[order_id] = input_filename[:-4] + "__" + row[driver_index]
+            if order_id not in order_data:
+                order_data[order_id] = Order(order_id, input_filename, row[driver_index])
+            else:
+                print('  ERROR! ' + str(order_id) + ' already exists in file: ' + getattr(order_data[order_id], 'input_file'))
+                print('  exiting...')
+                exit()
             order_count += 1
 
     print('  Done!')
     print('  ' + str(order_count) + ' delivery orders added')
-    print('  ' + str(len(order_drivers)) + ' Total')
+    print('  ' + str(len(order_data)) + ' Total')
 
 def process_header_row(header_row):
     col_index = 0
@@ -207,8 +221,8 @@ def process_pdf_input(pdf_file, filename):
             if order_id and id_looks_valid:
                 current_order_id = order_id
                 #  order in deliveries csv
-                if order_id in order_drivers:
-                    driver = order_drivers[order_id]
+                if order_id in order_data:
+                    driver = getattr(order_data[order_id], 'export_file')
                 # order NOT in deliveries csv
                 else:
                     shipping_method = text[text.find("Shipping Method") +
