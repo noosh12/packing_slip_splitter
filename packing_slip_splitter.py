@@ -55,6 +55,7 @@ errors = []
 actions = []
 
 order_data = {} # key: order_id =, val: Order object
+driver_data = {} # key: order_id =, val: Driver object
 
 driver_export_filenames = [] # filename + driver
 pdf_export_files = {}
@@ -147,10 +148,11 @@ def process_csv_input(input_filename):
             order_id = row[id_index]
             if not row[id_index]:
                 continue
+
+            filename_temp = input_filename[:-4] + "__" + row[driver_index]
             
-            if row[driver_index] not in driver_export_filenames:
-                driver_export_filenames.append(input_filename[:-4] + "__" + row[driver_index])
-            # order_drivers[order_id] = input_filename[:-4] + "__" + row[driver_index]
+            if filename_temp not in driver_export_filenames:
+                driver_export_filenames.append(filename_temp)
             if order_id not in order_data:
                 order_data[order_id] = Order(order_id, input_filename, row[driver_index])
             else:
@@ -179,6 +181,7 @@ def process_header_row(header_row):
 def create_pdf_exports():
     for driver_filename in driver_export_filenames:
         pdf_export_files[driver_filename] = PyPDF2.PdfFileWriter()
+        # TODO refaccto/remove to use driver data object
 
 def create_pickups_pdf_export():
     pdf_export_files['pickups'] = PyPDF2.PdfFileWriter()
@@ -278,27 +281,29 @@ def process_pdf_input(pdf_file, filename):
             action = 'Not first page of Order. Added to same as previous page.'
 
         # Add stamp
-        create_order_stamp(current_order_id, contains_keywords)
-        order_stamp = open(stamp_file,'rb')
-        stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
-        stamp_page = stamp_pdf.getPage(0)
-        page.mergePage(stamp_page)
+        if driver != 'ERROR' and driver != 'UNKNOWN' and not (driver == 'pickups' and contains_keywords):
+            create_order_stamp(current_order_id, contains_keywords, driver == 'pickups')
+            order_stamp = open(stamp_file,'rb')
+            stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
+            stamp_page = stamp_pdf.getPage(0)
+            page.mergePage(stamp_page)
 
         pdf_export_files[driver].addPage(page)
         actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
 
     print("\n  Done!")
 
-def create_order_stamp(order_id, first_page = False):
+def create_order_stamp(order_id, first_page, pickup):
     x_offset = 11 if first_page else 175
     y_offset = 2 if first_page else 0
+    stamp = order_id if pickup else order_data[order_id].get_driver_stamp()
+
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font('Arial', '', 8)
     pdf.set_xy(x_offset, y_offset)
-    pdf.cell(40, 10, 'A-01-' + order_id)
+    pdf.cell(40, 10, stamp)
     pdf.output(stamp_file, 'F')
-
 
 def close_pdf_exports():
     print(str(len(pdf_export_files))+ ' Export pdfs to create.\n  Exporting... ')
