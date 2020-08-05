@@ -13,11 +13,36 @@ class Order:
         self.driver = driver
         self.export_file = input_file[:-4] + "__" + driver
 
+        global driver_data
+        if self.export_file not in driver_data:
+            driver_data[self.export_file] = Driver(self.export_file)
+        driver_data[self.export_file].add_order_id(self.order_id)
+
+    def get_driver_stamp(self):
+        global driver_data
+        alias = getattr(driver_data[self.export_file], 'alias')
+        return alias + '-' + '01' + '-' + self.order_id
+
+class Driver:
+    def __init__(self, driver):
+        self.name = driver
+        self.file = PyPDF2.PdfFileWriter()
+        self.orders = []
+
+        global driver_count
+        self.alias = alias_options[driver_count]
+        driver_count += 1
+
+    def add_order_id(self, order_id):
+        self.orders.append(order_id)
+
 
 ## GLOBAL VARIABLES START ##
 inputs_folder = 'inputs/'
 exports_folder = 'exports/'
 stamp_file = '__delete_me__.pdf'
+alias_options = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+driver_count = 0
 execution_dir = ''
 contains_errors = False
 contains_unknown = False
