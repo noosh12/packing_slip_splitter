@@ -94,6 +94,17 @@ def get_directory():
         print('    ' + execution_dir + inputs_folder)
         print('  exiting...')
         exit()
+    
+    print('Checking if exports folder exists in Corrected directory...')
+    if os.path.exists(execution_dir + exports_folder):
+        print('  Success!')
+    else:
+        print('  ERROR! There is no exports folder in the Corrected directory.')
+        print('  Please create a folder named \'' + exports_folder[:-1] + '\'')
+        print('  The folder that will contain the exports files should be:')
+        print('    ' + execution_dir + exports_folder)
+        print('  exiting...')
+        exit()
 
 def scan_for_inputs():
     print('Searching for input files...')
