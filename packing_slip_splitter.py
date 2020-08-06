@@ -7,11 +7,12 @@ import time
 from fpdf import FPDF
 
 class Order:
-    def __init__(self, order_id, input_file, driver):
+    def __init__(self, order_id, input_file, driver, stop_no):
         self.order_id = order_id
         self.input_file = input_file
         self.driver = driver
-        self.export_file = input_file[:-4] + "__" + driver
+        self.export_file = input_file[:-4] + "__ALIAS_" + driver
+        self.stop_no = stop_no if int(stop_no) > 9 else '0' + stop_no
 
         global driver_data
         if self.export_file not in driver_data:
@@ -21,12 +22,11 @@ class Order:
     def get_driver_stamp(self):
         global driver_data
         alias = getattr(driver_data[self.export_file], 'alias')
-        return alias + '-' + '01' + '-' + self.order_id
+        return alias + '-' + self.stop_no + '-' + self.order_id
 
 class Driver:
     def __init__(self, driver):
         self.name = driver
-        self.file = PyPDF2.PdfFileWriter()
         self.orders = []
 
         global driver_count
@@ -35,6 +35,9 @@ class Driver:
 
     def add_order_id(self, order_id):
         self.orders.append(order_id)
+    
+    def get_full_export_name(self):
+        return self.name.replace('__ALIAS', '__'+self.alias)
 
 
 ## GLOBAL VARIABLES START ##
@@ -43,6 +46,7 @@ exports_folder = 'exports/'
 stamp_file = '__delete_me__.pdf'
 alias_options = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 driver_count = 0
+total_order_count = 0
 execution_dir = ''
 contains_errors = False
 contains_unknown = False
@@ -55,7 +59,7 @@ errors = []
 actions = []
 
 order_data = {} # key: order_id =, val: Order object
-driver_data = {} # key: order_id =, val: Driver object
+driver_data = {} # key: export filename =, val: Driver object
 
 driver_export_filenames = [] # filename + driver
 pdf_export_files = {}
@@ -111,11 +115,13 @@ def scan_for_inputs():
     print('  Done!')
     csv_input_filenames.reverse()
     pdf_input_filenames.reverse()
+    time.sleep(0.25)
 
     print('  ' + str(len(csv_input_filenames)) + " csv input files found: ")
     for filename in csv_input_filenames:
         print("    " + filename)
 
+    time.sleep(0.25)
     print('  ' + str(len(pdf_input_filenames)) + " pdf input files found: ")
     for filename in pdf_input_filenames:
         print("    " + filename)
@@ -127,10 +133,12 @@ def find_inputs_from_subdir(suffix):
 def process_csv_inputs():
     for input_filename in csv_input_filenames:
         process_csv_input(input_filename)
+        time.sleep(0.25)
 
 def process_csv_input(input_filename):
     driver_index = -1
     id_index = -1
+    stop_no_index = -1
     print("Processing:  " + input_filename)
     full_filepath = execution_dir + inputs_folder + input_filename
     with open(full_filepath, 'r', encoding='mac_roman', newline='') as csv_file:
@@ -142,19 +150,22 @@ def process_csv_input(input_filename):
             line_count += 1
 
             if line_count == 1: # headers row
-                id_index, driver_index = process_header_row(row)
+                id_index, driver_index, stop_no_index = process_header_row(row)
                 continue
 
             order_id = row[id_index]
+            driver = row[driver_index]
+            stop_no = row[stop_no_index]
+
             if not row[id_index]:
                 continue
 
-            filename_temp = input_filename[:-4] + "__" + row[driver_index]
+            filename_temp = input_filename[:-4] + "__" + driver
             
             if filename_temp not in driver_export_filenames:
                 driver_export_filenames.append(filename_temp)
             if order_id not in order_data:
-                order_data[order_id] = Order(order_id, input_filename, row[driver_index])
+                order_data[order_id] = Order(order_id, input_filename, driver, stop_no)
             else:
                 print('  ERROR! ' + str(order_id) + ' already exists in file: ' + getattr(order_data[order_id], 'input_file'))
                 print('  exiting...')
@@ -167,21 +178,22 @@ def process_csv_input(input_filename):
 
 def process_header_row(header_row):
     col_index = 0
-    for header in header_row:
-        if header == "Order ID" in header:
+    for header_val in header_row:
+        if header_val == "Order ID":
             id_index = col_index
-        elif header == "Driver":
+        elif header_val == "Driver":
             driver_index = col_index
+        elif header_val == "Stop Number":
+            stop_no_index = col_index
         col_index += 1
-    if id_index == -1 or driver_index == -1:
+    if id_index == -1 or driver_index == -1 or stop_no_index == -1:
         print("ERROR: Did not find target columns in csv")
         exit()
-    return id_index, driver_index
+    return id_index, driver_index, stop_no_index
 
 def create_pdf_exports():
-    for driver_filename in driver_export_filenames:
+    for driver_filename in driver_data: # key only
         pdf_export_files[driver_filename] = PyPDF2.PdfFileWriter()
-        # TODO refaccto/remove to use driver data object
 
 def create_pickups_pdf_export():
     pdf_export_files['pickups'] = PyPDF2.PdfFileWriter()
@@ -214,16 +226,19 @@ def process_pdf_inputs():
 def process_pdf_input(pdf_file, filename):
     current_order_id = "PLACEHOLDER"
     current_driver = "UNKNOWN"
+    global total_order_count
+    prev_total_order_count = total_order_count
+    time.sleep(0.25)
 
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
     print("  No. Of Pages :", pdfReader.numPages)
-    n_bar = 50
+    n_bar = 25
 
     for page_index in range(pdfReader.numPages):
         # Progress bar update
         j = (page_index + 1) / pdfReader.numPages
         sys.stdout.write('\r')
-        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%")
+        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  Current Order Total: {total_order_count+1}")
         sys.stdout.flush()
 
         page = pdfReader.getPage(page_index)
@@ -247,6 +262,7 @@ def process_pdf_input(pdf_file, filename):
 
             # order id is valid
             if order_id and id_looks_valid:
+                total_order_count += 1
                 current_order_id = order_id
                 #  order in deliveries csv
                 if order_id in order_data:
@@ -290,8 +306,8 @@ def process_pdf_input(pdf_file, filename):
 
         pdf_export_files[driver].addPage(page)
         actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
-
-    print("\n  Done!")
+    print("\n  New Orders Processed: " + str(total_order_count-prev_total_order_count))
+    print("  Done!")
 
 def create_order_stamp(order_id, first_page, pickup):
     x_offset = 11 if first_page else 175
@@ -307,10 +323,15 @@ def create_order_stamp(order_id, first_page, pickup):
 
 def close_pdf_exports():
     print(str(len(pdf_export_files))+ ' Export pdfs to create.\n  Exporting... ')
+    non_drivers = ['UNKNOWN', 'ERROR', 'pickups']
+
     for driver in pdf_export_files:
-        with open(execution_dir + exports_folder + driver + '.pdf', 'wb') as outfile:
+        filename = driver
+        if filename not in non_drivers:
+            filename = driver_data[driver].get_full_export_name()
+        with open(execution_dir + exports_folder + filename + '.pdf', 'wb') as outfile:
             pdf_export_files[driver].write(outfile)
-        print('    ' + driver + '.pdf')
+        print('    ' + filename + '.pdf')
     print('  Done!')
 
 def create_reports():
@@ -339,7 +360,7 @@ def main():
     print('--------------------------------------------------------------')
     print('--------------- Starting packing_slip_splitter ---------------')
     print('--------------------------------------------------------------')
-    time.sleep(2)
+    time.sleep(1.5)
 
     # single click app or python file?
     get_directory()
@@ -347,7 +368,7 @@ def main():
     
     # Search inputs folder for pdf and csv files
     scan_for_inputs()
-    time.sleep(1.5)
+    time.sleep(1.0)
 
     # Read and process csv files
     process_csv_inputs()
@@ -369,7 +390,12 @@ def main():
     # Must be done after closing off pdf exports
     close_pdf_inputs()
 
+    time.sleep(0.25)
     create_reports()
+    time.sleep(0.25)
+    
+    print("Total Orders: " + str(total_order_count))
+    time.sleep(0.25)
 
     print('--------------------------------------------------------------')
     print('--------------- packing_slip_splitter Complete ---------------')
