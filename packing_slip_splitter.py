@@ -4,7 +4,7 @@ import csv
 import os
 import sys
 import time
-from fpdf import FPDF
+import fpdf
 
 class Order:
     def __init__(self, order_id, input_file, driver, stop_no):
@@ -22,7 +22,7 @@ class Order:
     def get_driver_stamp(self):
         global driver_data
         alias = getattr(driver_data[self.export_file], 'alias')
-        return alias + '-' + self.stop_no + '-' + self.order_id
+        return alias + '-' + self.stop_no
 
 class Driver:
     def __init__(self, driver):
@@ -189,6 +189,9 @@ def process_csv_input(input_filename):
 
 def process_header_row(header_row):
     col_index = 0
+    id_index = -1
+    driver_index = -1
+    stop_no_index = -1
     for header_val in header_row:
         if header_val == "Order ID":
             id_index = col_index
@@ -249,7 +252,7 @@ def process_pdf_input(pdf_file, filename):
         # Progress bar update
         j = (page_index + 1) / pdfReader.numPages
         sys.stdout.write('\r')
-        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  Current Order Total: {total_order_count+1}")
+        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%   Current Orders: {total_order_count+1}")
         sys.stdout.flush()
 
         page = pdfReader.getPage(page_index)
@@ -321,13 +324,13 @@ def process_pdf_input(pdf_file, filename):
     print("  Done!")
 
 def create_order_stamp(order_id, first_page, pickup):
-    x_offset = 11 if first_page else 175
-    y_offset = 2 if first_page else 0
+    x_offset = 72 if first_page else 175
+    y_offset = 10 if first_page else 0
     stamp = order_id if pickup else order_data[order_id].get_driver_stamp()
 
-    pdf = FPDF()
+    pdf = fpdf.FPDF()
     pdf.add_page()
-    pdf.set_font('Arial', '', 8)
+    pdf.set_font('Arial', 'B', 11)
     pdf.set_xy(x_offset, y_offset)
     pdf.cell(40, 10, stamp)
     pdf.output(stamp_file, 'F')
