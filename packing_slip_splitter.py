@@ -124,8 +124,13 @@ def scan_for_inputs():
         exit()
 
     print('  Done!')
-    csv_input_filenames.reverse()
+    csv_input_filenames_temp.reverse()
     pdf_input_filenames.reverse()
+    for filename in csv_input_filenames_temp:
+        if 'sunday' in filename.lower():
+            csv_input_filenames.insert(0,filename)
+        else:
+            csv_input_filenames.append(filename)
     time.sleep(0.25)
 
     print('  ' + str(len(csv_input_filenames)) + " csv input files found: ")
