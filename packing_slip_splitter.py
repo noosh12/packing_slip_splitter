@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import fpdf
+import resource
 
 class Order:
     def __init__(self, order_id, input_file, driver, stop_no):
@@ -105,16 +106,25 @@ def get_directory():
         print('    ' + execution_dir + exports_folder)
         print('  exiting...')
         exit()
+    
+    # the soft limit imposed by the current configuration
+# the hard limit imposed by the operating system.
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if soft < 8000:
+        print('Open files limit is too low: ' + str(soft))
+        print('  Setting to 8192..')
+        resource.setrlimit(resource.RLIMIT_NOFILE, (8192, hard))
+        print('  Done!')
 
 def scan_for_inputs():
     print('Searching for input files...')
     
     global csv_input_filenames
     global pdf_input_filenames
-    csv_input_filenames = find_inputs_from_subdir(".csv")
+    csv_input_filenames_temp = find_inputs_from_subdir(".csv")
     pdf_input_filenames = find_inputs_from_subdir(".pdf")
     
-    if not csv_input_filenames:
+    if not csv_input_filenames_temp:
         print("  ERROR: No csv input files found!!")
         print('  exiting...')
         exit()
@@ -288,8 +298,8 @@ def process_pdf_input(pdf_file, filename):
                     driver = getattr(order_data[order_id], 'export_file')
                 # order NOT in deliveries csv
                 else:
-                    shipping_method = text[text.find("Shipping Method") +
-                        len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+                    shipping_method = text[text.find("Shipping Method")
+                        + len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
                     # order is a PICKUP
                     if shipping_method and any(x in shipping_method.lower() for x in pickup_keywords):
                         driver = "pickups"
