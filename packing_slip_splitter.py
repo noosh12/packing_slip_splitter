@@ -12,12 +12,12 @@ class Order:
         self.order_id = order_id
         self.input_file = input_file
         self.driver = driver
-        self.export_file = input_file[:-4] + "__ALIAS_" + driver
+        self.export_file = input_file[:-4] + "_" + driver
         self.stop_no = stop_no if int(stop_no) > 9 else '0' + stop_no
 
         global driver_data
-        if self.export_file not in driver_data:
-            driver_data[self.export_file] = Driver(self.export_file)
+        # if self.export_file not in driver_data:
+        #     driver_data[self.export_file] = Driver(self.export_file)
         driver_data[self.export_file].add_order_id(self.order_id)
 
     def get_driver_stamp(self):
@@ -26,19 +26,20 @@ class Order:
         return alias + '-' + self.stop_no
 
 class Driver:
-    def __init__(self, driver):
+    def __init__(self, driver, alias):
         self.name = driver
         self.orders = []
-
-        global driver_count
-        self.alias = alias_options[driver_count]
-        driver_count += 1
+        self.alias = alias
 
     def add_order_id(self, order_id):
         self.orders.append(order_id)
     
     def get_full_export_name(self):
-        return self.name.replace('__ALIAS', '__'+self.alias)
+        # print("asdasdasd" + self.name.replace('__ALIAS', '__'+self.alias))
+        return self.alias + "__" + self.name
+    
+    def get_orders(self):
+        print(str(self.orders))
 
 
 ## GLOBAL VARIABLES START ##
@@ -108,7 +109,7 @@ def get_directory():
         exit()
     
     # the soft limit imposed by the current configuration
-# the hard limit imposed by the operating system.
+    # the hard limit imposed by the operating system.
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     if soft < 8000:
         print('Open files limit is too low: ' + str(soft))
@@ -165,12 +166,15 @@ def process_csv_input(input_filename):
     driver_index = -1
     id_index = -1
     stop_no_index = -1
+    global driver_data
     print("Processing:  " + input_filename)
     full_filepath = execution_dir + inputs_folder + input_filename
     with open(full_filepath, 'r', encoding='mac_roman', newline='') as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         order_count = 0
+        driver = "PLACEHOLDER"
+        driver_full = "PLACEHOLDER"
         
         for row in csv_reader:
             line_count += 1
@@ -180,16 +184,26 @@ def process_csv_input(input_filename):
                 continue
 
             order_id = row[id_index]
-            driver = row[driver_index]
             stop_no = row[stop_no_index]
 
             if not row[id_index]:
                 continue
-
-            filename_temp = input_filename[:-4] + "__" + driver
             
-            if filename_temp not in driver_export_filenames:
-                driver_export_filenames.append(filename_temp)
+            if driver != row[driver_index]:
+                driver = row[driver_index]
+                global driver_count
+                alias = alias_options[driver_count]
+                driver_count += 1
+                driver_full = input_filename[:-4] + "_" + driver
+                driver_data[driver_full] = Driver(driver_full, alias)
+                
+            # filename_temp = input_filename[:-4] + "__" + driver
+            
+            # if filename_temp not in driver_export_filenames:
+            #     driver_export_filenames.append(filename_temp)
+            #     print("filename temp" + filename_temp)
+
+
             if order_id not in order_data:
                 order_data[order_id] = Order(order_id, input_filename, driver, stop_no)
             else:
@@ -403,6 +417,10 @@ def main():
     process_csv_inputs()
     time.sleep(0.5)
 
+    global driver_data
+    for driver in driver_data.values():
+        print(driver.get_full_export_name())
+        driver.get_orders()
     # Open pdf input files
     open_pdf_inputs()
 
