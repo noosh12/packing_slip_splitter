@@ -367,7 +367,9 @@ def process_pdf_input(pdf_file, filename):
                                 if any(i.isdigit() for i in line): # first line of address
                                     break
                                 last_name = line.strip()
-                            shipping_name = shipping_name.split("\n")[0].strip()
+                            # shipping_name = shipping_name.split("\n")[0].strip()
+                        else:
+                            last_name = shipping_name
 
                         if len(last_name) > 0:
                             if ' ' in last_name:
