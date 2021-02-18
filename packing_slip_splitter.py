@@ -6,24 +6,40 @@ import sys
 import time
 import fpdf
 import resource
+from string import ascii_letters, digits
 
 class Order:
-    def __init__(self, order_id, input_file, driver, stop_no):
+    def __init__(self, order_id, deliveries_file, driver, stop_num):
         self.order_id = order_id
-        self.input_file = input_file
+        self.deliveries_file = deliveries_file
         self.driver = driver
-        self.export_file = input_file[:-4] + "_" + driver
-        self.stop_no = stop_no if int(stop_no) > 9 else '0' + stop_no
+        self.export_file = deliveries_file[:-4] + "_" + driver
+        self.stop_no = stop_num if int(stop_num) > 9 else '0' + stop_num
+        self.pages = []
+        self.pdf_file = ''
+        self.order_exists_in_pdf = False
+        self.order_added_to_export = False
+        self.export_pdf_file = ''
+        self.source_pages = ''
 
-        global driver_data
-        # if self.export_file not in driver_data:
-        #     driver_data[self.export_file] = Driver(self.export_file)
-        driver_data[self.export_file].add_order_id(self.order_id)
+        if driver != 'N/A':
+            global driver_data
+            driver_data[self.export_file].add_order_id(self.order_id)
 
     def get_driver_stamp(self):
         global driver_data
         alias = getattr(driver_data[self.export_file], 'alias')
         return alias + '-' + self.stop_no
+
+    def set_pdf_file(self, pdf_file):
+        self.pdf_file = pdf_file
+        self.order_exists_in_pdf = True
+
+    def get_pdf_file(self):
+        return self.pdf_file
+    
+    def order_exists(self):
+        return self.order_exists_in_pdf
 
 class Driver:
     def __init__(self, driver, alias):
@@ -35,7 +51,6 @@ class Driver:
         self.orders.append(order_id)
     
     def get_full_export_name(self):
-        # print("asdasdasd" + self.name.replace('__ALIAS', '__'+self.alias))
         return self.alias + "__" + self.name
     
     def get_orders(self):
@@ -48,7 +63,8 @@ exports_folder = 'exports/'
 stamp_file = '__delete_me__.pdf'
 alias_options = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 driver_count = 0
-total_order_count = 0
+total_orders_found = 0
+total_orders_added = 0
 execution_dir = ''
 contains_errors = False
 contains_unknown = False
@@ -62,16 +78,19 @@ actions = []
 
 order_data = {} # key: order_id =, val: Order object
 driver_data = {} # key: export filename =, val: Driver object
+pickup_orders = [] # surname__**__order_id
 
 driver_export_filenames = [] # filename + driver
 pdf_export_files = {}
 pdf_input_files = {}
 order_pages = {}
-## GLOBAL VARIABLES END ##
 
 # only appear in first page of Order
 required_keywords = ["Order", "Date", "Shipping Method", "Tags", "Bill To"]
 pickup_keywords = ["pickup", "pick up", "pick-up"] 
+
+## GLOBAL VARIABLES END ##
+
 
 def get_directory():
     print('Determining current execution method...')
@@ -196,13 +215,6 @@ def process_csv_input(input_filename):
                 driver_count += 1
                 driver_full = input_filename[:-4] + "_" + driver
                 driver_data[driver_full] = Driver(driver_full, alias)
-                
-            # filename_temp = input_filename[:-4] + "__" + driver
-            
-            # if filename_temp not in driver_export_filenames:
-            #     driver_export_filenames.append(filename_temp)
-            #     print("filename temp" + filename_temp)
-
 
             if order_id not in order_data:
                 order_data[order_id] = Order(order_id, input_filename, driver, stop_no)
@@ -243,15 +255,33 @@ def create_pickups_pdf_export():
     global contains_pickups
     contains_pickups = True
 
+    create_coversheet("pickups")
+    coversheet = open(stamp_file,'rb')
+    coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
+    coversheet_page = coversheet_pdf.getPage(0)
+    pdf_export_files["pickups"].addPage(coversheet_page)
+
 def create_error_pdf_export():
     pdf_export_files['ERRORS'] = PyPDF2.PdfFileWriter()
     global contains_errors
     contains_errors = True
 
+    create_coversheet("ERRORS")
+    coversheet = open(stamp_file,'rb')
+    coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
+    coversheet_page = coversheet_pdf.getPage(0)
+    pdf_export_files["ERRORS"].addPage(coversheet_page)
+
 def create_unknown_pdf_export():
     pdf_export_files['UNKNOWN'] = PyPDF2.PdfFileWriter()
     global contains_unknown
     contains_unknown = True
+
+    create_coversheet("UNKNOWN")
+    coversheet = open(stamp_file,'rb')
+    coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
+    coversheet_page = coversheet_pdf.getPage(0)
+    pdf_export_files["UNKNOWN"].addPage(coversheet_page)
 
 def open_pdf_inputs():
     for pdf_filename in pdf_input_filenames:
@@ -268,9 +298,10 @@ def process_pdf_inputs():
 
 def process_pdf_input(pdf_file, filename):
     current_order_id = "PLACEHOLDER"
-    current_driver = "UNKNOWN"
-    global total_order_count
-    prev_total_order_count = total_order_count
+    is_pickup = False
+    global total_orders_found
+    global total_orders_added
+    prev_total_order_count = total_orders_found
     time.sleep(0.25)
 
     pdfReader = PyPDF2.PdfFileReader(pdf_file)
@@ -281,12 +312,14 @@ def process_pdf_input(pdf_file, filename):
         # Progress bar update
         j = (page_index + 1) / pdfReader.numPages
         sys.stdout.write('\r')
-        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%   Current Orders: {total_order_count+1}")
+        sys.stdout.write(f"  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%   Current Order Total: {total_orders_found+1}")
         sys.stdout.flush()
 
         page = pdfReader.getPage(page_index)
-        text = page.extractText().replace('\n','')
+        rawText = page.extractText()
+        text = rawText.replace('\n','')
         page_num = page_index +1
+        
 
         # Check to see if the page contains all the keywords found on first page of orders
         contains_keywords = all(x in text for x in required_keywords)
@@ -297,60 +330,165 @@ def process_pdf_input(pdf_file, filename):
         # Check to see if order id looks valid
         id_looks_valid = len(order_id) < 12 and "#" in order_id
 
-        driver = 'UNKNOWN'
-        action = 'Added successfully'
-
         # # First page
         if contains_keywords:
+            is_pickup = False
 
             # order id is valid
             if order_id and id_looks_valid:
-                total_order_count += 1
+                total_orders_found += 1
                 current_order_id = order_id
+
                 #  order in deliveries csv
                 if order_id in order_data:
                     driver = getattr(order_data[order_id], 'export_file')
+                    order_data[order_id].set_pdf_file(filename)
+                    order_data[order_id].pages.append(page)
+                    order_data[order_id].source_pages = str(page_num)
+
                 # order NOT in deliveries csv
                 else:
+                    order_data[order_id] = Order(order_id, 'N/A', 'N/A', '00')
+                    order_data[order_id].set_pdf_file(filename)
+                    order_data[order_id].source_pages = str(page_num)
+
                     shipping_method = text[text.find("Shipping Method")
                         + len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+                    
                     # order is a PICKUP
                     if shipping_method and any(x in shipping_method.lower() for x in pickup_keywords):
-                        driver = "pickups"
-                        action = 'Not in deliveries and Shipping text found: ' + shipping_method
+                        is_pickup = True
+                        order_data[order_id].driver = 'pickup'
+                        order_data[order_id].deliveries_file = 'Pickup detected...'
+                        # Attempt to get the Ship To person's surname
+                        shipping_name = rawText[rawText.find("Ship To\n")+len("Ship To\n"):rawText.rfind("Shipping Method")]
+                        if "\n" in shipping_name:
+                            for line in shipping_name.split("\n"):
+                                if any(i.isdigit() for i in line): # first line of address
+                                    break
+                                last_name = line.strip()
+                            shipping_name = shipping_name.split("\n")[0].strip()
+
+                        if len(last_name) > 0:
+                            if ' ' in last_name:
+                                last_name = last_name.split(" ")[-1]
+                        else:
+                            last_name = " "
+
+                        global pickup_orders
+                        pickup_orders.append(last_name.lower() + "__**__" + order_id)
+                        order_data[order_id].pages.append(page)
+
                         if not contains_pickups:
                             create_pickups_pdf_export()
+
                     # order is UNKNOWN
                     else:
-                        driver = 'UNKNOWN'
-                        action = 'CAUTION: Order ID not found in delivery input files'
+                        total_orders_added += 1
+                        current_order_id = 'UNKNOWN'
                         if not contains_unknown:
                             create_unknown_pdf_export()
+                        pdf_export_files['UNKNOWN'].addPage(page)
+                        order_data[order_id].driver = 'UNKNOWN'
+                        order_data[order_id].order_added_to_export = True
+                        order_data[order_id].pdf_file = filename
+                        order_data[order_id].export_pdf_file = 'UNKNOWN'
+                        order_data[order_id].deliveries_file = 'Not Found...'
+                        order_data[order_id].pages.append(page)
+            
             # order id is invalid - ERRORED page
             else:
-                driver = 'ERROR'
                 current_order_id = 'ERROR'
-                action = 'ERROR: Unable to find Order ID from the first page of order'
-                errors.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
                 if not contains_errors:
                     create_error_pdf_export()
-            current_driver = driver
+                pdf_export_files['ERROR'].addPage(page)
+                errors.append('Unable to extract the Order ID from  page. Page ' + str(page_num)
+                    + ' from ' + filename + '. Added to Errors.pdf.')
+        
+        # second page
         else:
-            driver = current_driver
-            action = 'Not first page of Order. Added to same as previous page.'
+            if current_order_id == 'UNKNOWN':
+                pdf_export_files['UNKNOWN'].addPage(page)
+                order_data[current_order_id].pages.append(page)
+                order_data[current_order_id].source_pages += "," + str(page_num)
+                actions.append([filename, str(page_num), current_order_id, driver + '.pdf', 'CAUTION: Additional page of previous'])
+            elif current_order_id == 'ERROR':
+                pdf_export_files['ERROR'].addPage(page)
+                errors.append('An additional page of the above. Page ' + str(page_num)
+                    + ' from ' + filename + '. Added to Errors.pdf.')
+            elif is_pickup:
+                order_data[current_order_id].pages.append(page)
+                order_data[current_order_id].source_pages += "," + str(page_num)
+            else:
+                order_data[current_order_id].pages.append(page)
+                order_data[current_order_id].source_pages += "," + str(page_num)
 
-        # Add stamp
-        if driver != 'ERROR' and driver != 'UNKNOWN' and not (driver == 'pickups' and contains_keywords):
-            create_order_stamp(current_order_id, contains_keywords, driver == 'pickups')
-            order_stamp = open(stamp_file,'rb')
-            stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
-            stamp_page = stamp_pdf.getPage(0)
-            page.mergePage(stamp_page)
-
-        pdf_export_files[driver].addPage(page)
-        actions.append([filename, str(page_num), current_order_id, driver + '.pdf', action])
-    print("\n  New Orders Processed: " + str(total_order_count-prev_total_order_count))
+    print("\n  New Orders Processed: " + str(total_orders_found-prev_total_order_count))
     print("  Done!")
+
+def process_pdf_outputs():
+    n_bar = 10
+    global total_orders_found
+    global total_orders_added
+    print("Building output pdf files...")
+
+    for driver in driver_data:
+        create_coversheet(driver_data[driver].get_full_export_name())
+        coversheet = open(stamp_file,'rb')
+        coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
+        coversheet_page = coversheet_pdf.getPage(0)
+        pdf_export_files[driver].addPage(coversheet_page)
+
+        order_count = 1
+        for order in reversed(driver_data[driver].orders):
+            is_first_page = True
+            j = (order_count) / len(driver_data[driver].orders)
+            sys.stdout.write('\r')
+            sys.stdout.write(f"  {driver_data[driver].name}  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  Orders Added: {order_count}")
+            sys.stdout.flush()
+            order_count += 1
+            total_orders_added += 1
+            
+            for page in order_data[order].pages:
+                create_order_stamp(order, is_first_page, False)
+                order_stamp = open(stamp_file,'rb')
+                stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
+                stamp_page = stamp_pdf.getPage(0)
+                page.mergePage(stamp_page)
+                pdf_export_files[driver].addPage(page)
+
+                is_first_page = False
+            order_data[order].order_added_to_export = True
+            order_data[order].export_pdf_file = driver_data[driver].get_full_export_name()
+        print()
+    
+    # pickups
+    pickup_orders.sort()
+    order_count = 1
+    for key in pickup_orders:
+        is_first_page = True
+        total_orders_added += 1
+        order = key.split("__**__")[1]
+
+        for page in order_data[order].pages:
+            if is_first_page:
+                j = (order_count) / len(pickup_orders)
+                sys.stdout.write('\r')
+                sys.stdout.write(f"  pickups  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  Orders Added: {order_count}")
+                sys.stdout.flush()
+                order_count += 1
+            else:
+                create_order_stamp(order, is_first_page, True)
+                order_stamp = open(stamp_file,'rb')
+                stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
+                stamp_page = stamp_pdf.getPage(0)
+                page.mergePage(stamp_page)
+            pdf_export_files['pickups'].addPage(page)
+            is_first_page = False
+        order_data[order].order_added_to_export = True
+        order_data[order].export_pdf_file = 'pickups'
+    print()
+        
 
 def create_order_stamp(order_id, first_page, pickup):
     x_offset = 72 if first_page else 175
@@ -362,6 +500,17 @@ def create_order_stamp(order_id, first_page, pickup):
     pdf.set_font('Arial', 'B', 11)
     pdf.set_xy(x_offset, y_offset)
     pdf.cell(40, 10, stamp)
+    pdf.output(stamp_file, 'F')
+
+def create_coversheet(text):
+    x_offset = 50 if len(text) > 10 else 75
+    y_offset = 130
+
+    pdf = fpdf.FPDF()
+    pdf.add_page()
+    pdf.set_font('Courier', 'B', 20)
+    pdf.set_xy(x_offset, y_offset)
+    pdf.cell(40, 10, text)
     pdf.output(stamp_file, 'F')
 
 def close_pdf_exports():
@@ -381,20 +530,32 @@ def create_reports():
     print('Creating Action Report...')
     with open(execution_dir + '_action_report.csv', 'w') as file:
         filewriter = csv.writer(file)
-        filewriter.writerow(['Input PDF', 'Page num', 'Order ID', 'Export PDF', 'Action'])
-        for row in actions:
-            filewriter.writerow(row)
-            # print(row)
+        filewriter.writerow(['Order ID', 'Driver', 'Deliveries CSV File', 'Input PDF File'
+            , 'Source Pages', 'Page Count', 'Added to Export', 'Export PDF File'])
+
+        for order in order_data.values():
+            filewriter.writerow([
+                order.order_id,
+                order.driver,
+                order.deliveries_file,
+                order.pdf_file,
+                order.source_pages,
+                str(len(order.pages)),
+                str(order.order_added_to_export),
+                order.export_pdf_file + '.pdf'
+            ])
+
+            if not order.order_added_to_export:
+                errors.append(order.order_id + ' was never added to an export. Found on page(s) ' 
+                    + order.source_pages + ' in ' + order.pdf_file)
     print('  Done!')
 
     if errors:
         print('Creating ERROR Report as errors found.')
         with open(execution_dir + '_error_report.csv', 'w') as file:
             filewriter = csv.writer(file)
-            filewriter.writerow(['Input PDF', 'Page num', 'Order ID', 'Export PDF', 'Action'])
-            for row in errors:
-                filewriter.writerow(row)
-                # print(row)
+            for error_text in errors:
+                filewriter.writerow(error_text)
         print('  Done!')
     else:
         print('Completed with no errors... No Error report to create!')
@@ -417,10 +578,6 @@ def main():
     process_csv_inputs()
     time.sleep(0.5)
 
-    global driver_data
-    for driver in driver_data.values():
-        print(driver.get_full_export_name())
-        driver.get_orders()
     # Open pdf input files
     open_pdf_inputs()
 
@@ -429,6 +586,8 @@ def main():
 
     # Read pdf input and copy orders into correct export
     process_pdf_inputs()
+
+    process_pdf_outputs()
 
     # Close off pdf exports
     close_pdf_exports()
@@ -441,7 +600,10 @@ def main():
     create_reports()
     time.sleep(0.25)
     
-    print("Total Orders: " + str(total_order_count))
+    print("Total Orders found in input pdfs: " + str(total_orders_found))
+    print("Total Orders added to output pdfs: " + str(total_orders_added))
+    if(total_orders_found != total_orders_added):
+        print("ERROR: Order totals do not match!!!")
     time.sleep(0.25)
 
     print('--------------------------------------------------------------')
