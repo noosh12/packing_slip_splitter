@@ -13,7 +13,7 @@ class Order:
         self.order_id = order_id
         self.deliveries_file = deliveries_file
         self.driver = driver
-        self.export_file = deliveries_file[:-4] + "_" + driver
+        self.export_file = deliveries_file[:-4] + "__" + driver
         self.stop_no = stop_num if int(stop_num) > 9 else '0' + stop_num
         self.pages = []
         self.pdf_file = ''
@@ -21,6 +21,8 @@ class Order:
         self.order_added_to_export = False
         self.export_pdf_file = ''
         self.source_pages = ''
+        self.tag = ''
+        self.new_box = False
 
         if driver != 'N/A':
             global driver_data
@@ -79,6 +81,7 @@ actions = []
 order_data = {} # key: order_id =, val: Order object
 driver_data = {} # key: export filename =, val: Driver object
 pickup_orders = [] # surname__**__order_id
+tags = {} # key: phone,  val: [name, tag]
 
 driver_export_filenames = [] # filename + driver
 pdf_export_files = {}
@@ -171,6 +174,37 @@ def scan_for_inputs():
     print('  ' + str(len(pdf_input_filenames)) + " pdf input files found: ")
     for filename in pdf_input_filenames:
         print("    " + filename)
+        
+
+def load_tags_from_specials_file():
+    print('Searching for order notes file: \'SPECIALS.csv\'..')
+    specials_filepath = execution_dir + 'SPECIALS.csv'
+    global tags
+    if os.path.isfile(specials_filepath):
+        print ("  Found. Loading notes...")
+        with open(specials_filepath, 'r', encoding='mac_roman', newline='') as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            
+            for row in csv_reader:
+                line_count += 1
+
+                if line_count == 1: # headers row
+                    continue
+
+                # phone - num only
+                # name - lower alpha only
+                # tag       
+                tags[re.sub("[^0-9]", "", row[1])] = [ 
+                        re.sub("[^a-zA-Z]+", "", row[0]).lower(),
+                        row[2]
+                    ]
+        print('  Done! ' + str(len(tags)) + ' notes loaded.')
+
+            
+    else:
+        print ("  WARNING: File not found. No notes will be tagged onto orders.")
+
 
 def find_inputs_from_subdir(suffix):
     filenames = os.listdir(execution_dir+inputs_folder)
@@ -213,8 +247,10 @@ def process_csv_input(input_filename):
                 global driver_count
                 alias = alias_options[driver_count]
                 driver_count += 1
-                driver_full = input_filename[:-4] + "_" + driver
+                driver_full = input_filename[:-4] + "__" + driver
                 driver_data[driver_full] = Driver(driver_full, alias)
+
+                # TODO convert filename to date value
 
             if order_id not in order_data:
                 order_data[order_id] = Order(order_id, input_filename, driver, stop_no)
@@ -319,7 +355,6 @@ def process_pdf_input(pdf_file, filename):
         rawText = page.extractText()
         text = rawText.replace('\n','')
         page_num = page_index +1
-        
 
         # Check to see if the page contains all the keywords found on first page of orders
         contains_keywords = all(x in text for x in required_keywords)
@@ -339,6 +374,8 @@ def process_pdf_input(pdf_file, filename):
                 total_orders_found += 1
                 current_order_id = order_id
 
+                shipping_method, last_name, tag, new_box = process_shipping_details(rawText, text)
+
                 #  order in deliveries csv
                 if order_id in order_data:
                     driver = getattr(order_data[order_id], 'export_file')
@@ -351,9 +388,6 @@ def process_pdf_input(pdf_file, filename):
                     order_data[order_id] = Order(order_id, 'N/A', 'N/A', '00')
                     order_data[order_id].set_pdf_file(filename)
                     order_data[order_id].source_pages = str(page_num)
-
-                    shipping_method = text[text.find("Shipping Method")
-                        + len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
                     
                     # order is a PICKUP
                     if shipping_method and any(x in shipping_method.lower() for x in pickup_keywords):
@@ -361,22 +395,7 @@ def process_pdf_input(pdf_file, filename):
                         order_data[order_id].driver = 'pickup'
                         order_data[order_id].deliveries_file = 'Pickup detected...'
                         # Attempt to get the Ship To person's surname
-                        shipping_name = rawText[rawText.find("Ship To\n")+len("Ship To\n"):rawText.rfind("Shipping Method")]
-                        if "\n" in shipping_name:
-                            for line in shipping_name.split("\n"):
-                                if any(i.isdigit() for i in line): # first line of address
-                                    break
-                                last_name = line.strip()
-                            # shipping_name = shipping_name.split("\n")[0].strip()
-                        else:
-                            last_name = shipping_name
-
-                        if len(last_name) > 0:
-                            if ' ' in last_name:
-                                last_name = last_name.split(" ")[-1]
-                        else:
-                            last_name = " "
-
+                        
                         global pickup_orders
                         pickup_orders.append(last_name.lower() + "__**__" + order_id)
                         order_data[order_id].pages.append(page)
@@ -397,7 +416,10 @@ def process_pdf_input(pdf_file, filename):
                         order_data[order_id].export_pdf_file = 'UNKNOWN'
                         order_data[order_id].deliveries_file = 'Not Found...'
                         order_data[order_id].pages.append(page)
-            
+
+                order_data[order_id].tag = tag
+                order_data[order_id].new_box = new_box
+
             # order id is invalid - ERRORED page
             else:
                 current_order_id = 'ERROR'
@@ -428,6 +450,49 @@ def process_pdf_input(pdf_file, filename):
     print("\n  New Orders Processed: " + str(total_orders_found-prev_total_order_count))
     print("  Done!")
 
+def process_shipping_details(rawText, text):
+    last_name = ''
+    shipping_method = text[text.find("Shipping Method")
+        + len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+
+    shipping_details = rawText[rawText.find("Ship To\n")
+        + len("Ship To\n"):rawText.rfind("Shipping Method")]
+
+    order_tags = text[text.find("Tags")
+        + len("Tags"):text.rfind("Qty")]
+    
+    if "\n" in shipping_details:
+        for line in shipping_details.split("\n"):
+            if any(i.isdigit() for i in line): # first line of address
+                break
+            last_name = line.strip()
+        # shipping_details = shipping_details.split("\n")[0].strip()
+    else:
+        last_name = shipping_details
+
+    if len(last_name) > 0:
+        if ' ' in last_name:
+            last_name = last_name.split(" ")[-1]
+    else:
+        last_name = " "
+
+    global tags
+    tag = ''
+    clean_shipping = re.sub(r'\W+', '', shipping_details).lower()
+
+    for phone in tags:
+        # print(clean_shipping)
+        if phone in clean_shipping:
+            # print(phone)
+            if tags[phone][0] in clean_shipping: # name
+                tag = tags[phone][1] # tag
+                break
+
+    keywords = ["FTO", "STO", "first"]
+    new_box = True if any(x in order_tags for x in keywords) else False
+
+    return shipping_method, last_name, tag, new_box
+
 def process_pdf_outputs():
     n_bar = 10
     global total_orders_found
@@ -452,11 +517,11 @@ def process_pdf_outputs():
             total_orders_added += 1
             
             for page in order_data[order].pages:
-                create_order_stamp(order, is_first_page, False)
-                order_stamp = open(stamp_file,'rb')
-                stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
-                stamp_page = stamp_pdf.getPage(0)
-                page.mergePage(stamp_page)
+                if create_order_stamp(order, is_first_page, False, order_data[order].tag, len(order_data[order].pages) > 1, order_data[order].new_box):
+                    order_stamp = open(stamp_file,'rb')
+                    stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
+                    stamp_page = stamp_pdf.getPage(0)
+                    page.mergePage(stamp_page)
                 pdf_export_files[driver].addPage(page)
 
                 is_first_page = False
@@ -479,12 +544,13 @@ def process_pdf_outputs():
                 sys.stdout.write(f"  pickups  [{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  Orders Added: {order_count}")
                 sys.stdout.flush()
                 order_count += 1
-            else:
-                create_order_stamp(order, is_first_page, True)
+            
+            if create_order_stamp(order, is_first_page, True, order_data[order].tag, len(order_data[order].pages) > 1, order_data[order].new_box):
                 order_stamp = open(stamp_file,'rb')
                 stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
                 stamp_page = stamp_pdf.getPage(0)
                 page.mergePage(stamp_page)
+
             pdf_export_files['pickups'].addPage(page)
             is_first_page = False
         order_data[order].order_added_to_export = True
@@ -492,27 +558,66 @@ def process_pdf_outputs():
     print()
         
 
-def create_order_stamp(order_id, first_page, pickup):
-    x_offset = 72 if first_page else 175
-    y_offset = 10 if first_page else 0
-    stamp = order_id if pickup else order_data[order_id].get_driver_stamp()
-
+def create_order_stamp(order_id, first_page, pickup, tag, multi_page, new_box):
+    # don't create tag for normal since-page pickups
+    if pickup and not multi_page and not tag and not new_box:
+        return False
+    
     pdf = fpdf.FPDF()
     pdf.add_page()
-    pdf.set_font('Arial', 'B', 11)
-    pdf.set_xy(x_offset, y_offset)
-    pdf.cell(40, 10, stamp)
+    corner_tag = '/' if multi_page else ''
+    
+    # Driver run number
+    if not pickup:
+        x_offset = 72 if first_page else 175
+        y_offset = 10 if first_page else 0
+        pdf.set_font('Arial', 'B', 11)
+        pdf.set_xy(x_offset, y_offset)
+        pdf.cell(40, 10, order_data[order_id].get_driver_stamp())
+    
+    # order_id on non-first page pickups
+    if pickup and not first_page:
+        pdf.set_font('Arial', 'B', 11)
+        pdf.set_xy(175, 0)
+        pdf.cell(40, 10, order_id)
+
+    # Special order tag
+    if tag and first_page:
+        pdf.set_font('Arial', 'B', 11)
+        pdf.set_xy(40, 12)
+        pdf.cell(40, 10, tag)
+
+        corner_tag += '*'
+
+    # Staple placeholder or corner tag (multi-page order)
+    if corner_tag:
+        pdf.set_font('Times', '', 24)
+        pdf.set_xy(2, 1)
+        pdf.cell(40, 10, corner_tag)
+
+    # New Box corner tag
+    if new_box and first_page:
+        pdf.set_font('Times', '', 24)
+        pdf.set_xy(200, 1)
+        pdf.cell(40, 10, '*')
+
     pdf.output(stamp_file, 'F')
+    return True
 
 def create_coversheet(text):
-    x_offset = 50 if len(text) > 10 else 75
-    y_offset = 130
-
     pdf = fpdf.FPDF()
     pdf.add_page()
-    pdf.set_font('Courier', 'B', 20)
-    pdf.set_xy(x_offset, y_offset)
-    pdf.cell(40, 10, text)
+    pdf.set_font('Courier', 'B', 30)
+    pdf.cell(0, 0, '*' * 33, 0, 0, 'C')
+    
+    x_offset = 60
+    y_offset = 125
+
+    for line in text.split('__'):
+        pdf.set_xy(x_offset, y_offset)
+        pdf.cell(80, 10, line, 0, 0, 'C')
+        y_offset += 20
+
     pdf.output(stamp_file, 'F')
 
 def close_pdf_exports():
@@ -575,6 +680,10 @@ def main():
     # Search inputs folder for pdf and csv files
     scan_for_inputs()
     time.sleep(1.0)
+
+    # load optional tags
+    load_tags_from_specials_file()
+    time.sleep(0.5)
 
     # Read and process csv files
     process_csv_inputs()
