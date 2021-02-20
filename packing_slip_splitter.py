@@ -6,6 +6,7 @@ import sys
 import time
 import fpdf
 import resource
+import datetime
 from string import ascii_letters, digits
 
 class Order:
@@ -44,16 +45,24 @@ class Order:
         return self.order_exists_in_pdf
 
 class Driver:
-    def __init__(self, driver, alias):
+    def __init__(self, driver, alias, date, driver_simple):
         self.name = driver
         self.orders = []
         self.alias = alias
+        self.date = date
+        self.driver = driver_simple
 
     def add_order_id(self, order_id):
         self.orders.append(order_id)
     
     def get_full_export_name(self):
         return self.alias + "__" + self.name
+    
+    def get_cover_page_values(self):
+        if self.date:
+            return [self.alias, self.date, self.driver]
+        else:
+            return [self.alias, self.name.split('__')[0], self.name.split('__')[1]]
     
     def get_orders(self):
         print(str(self.orders))
@@ -219,6 +228,8 @@ def process_csv_input(input_filename):
     driver_index = -1
     id_index = -1
     stop_no_index = -1
+    date_index = -1
+
     global driver_data
     print("Processing:  " + input_filename)
     full_filepath = execution_dir + inputs_folder + input_filename
@@ -228,16 +239,26 @@ def process_csv_input(input_filename):
         order_count = 0
         driver = "PLACEHOLDER"
         driver_full = "PLACEHOLDER"
+        date_string = ''
         
         for row in csv_reader:
             line_count += 1
 
             if line_count == 1: # headers row
-                id_index, driver_index, stop_no_index = process_header_row(row)
+                id_index, driver_index, stop_no_index, date_index = process_header_row(row)
                 continue
 
             order_id = row[id_index]
             stop_no = row[stop_no_index]
+
+            try:
+                if line_count == 2 and date_index != -1:
+                    temp = row[date_index]
+                    if temp.count('/') == 2:
+                        temp = temp.split('/')
+                        date_string = datetime.datetime(int(temp[2]), int(temp[1]), int(temp[0])).strftime("%A, %d %b %Y")
+            except ValueError:
+                date_string = ''
 
             if not row[id_index]:
                 continue
@@ -248,7 +269,7 @@ def process_csv_input(input_filename):
                 alias = alias_options[driver_count]
                 driver_count += 1
                 driver_full = input_filename[:-4] + "__" + driver
-                driver_data[driver_full] = Driver(driver_full, alias)
+                driver_data[driver_full] = Driver(driver_full, alias, date_string, driver)
 
                 # TODO convert filename to date value
 
@@ -269,6 +290,7 @@ def process_header_row(header_row):
     id_index = -1
     driver_index = -1
     stop_no_index = -1
+    date_index = -1
     for header_val in header_row:
         if header_val == "Order ID":
             id_index = col_index
@@ -276,11 +298,14 @@ def process_header_row(header_row):
             driver_index = col_index
         elif header_val == "Stop Number":
             stop_no_index = col_index
+        elif header_val == "Date":
+            date_index = col_index
+
         col_index += 1
     if id_index == -1 or driver_index == -1 or stop_no_index == -1:
         print("ERROR: Did not find target columns in csv")
         exit()
-    return id_index, driver_index, stop_no_index
+    return id_index, driver_index, stop_no_index, date_index
 
 def create_pdf_exports():
     for driver_filename in driver_data: # key only
@@ -291,7 +316,7 @@ def create_pickups_pdf_export():
     global contains_pickups
     contains_pickups = True
 
-    create_coversheet("pickups")
+    create_coversheet(["pickups"])
     coversheet = open(stamp_file,'rb')
     coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
     coversheet_page = coversheet_pdf.getPage(0)
@@ -302,7 +327,7 @@ def create_error_pdf_export():
     global contains_errors
     contains_errors = True
 
-    create_coversheet("ERRORS")
+    create_coversheet(["ERRORS"])
     coversheet = open(stamp_file,'rb')
     coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
     coversheet_page = coversheet_pdf.getPage(0)
@@ -313,7 +338,7 @@ def create_unknown_pdf_export():
     global contains_unknown
     contains_unknown = True
 
-    create_coversheet("UNKNOWN")
+    create_coversheet(["UNKNOWN"])
     coversheet = open(stamp_file,'rb')
     coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
     coversheet_page = coversheet_pdf.getPage(0)
@@ -500,7 +525,7 @@ def process_pdf_outputs():
     print("Building output pdf files...")
 
     for driver in driver_data:
-        create_coversheet(driver_data[driver].get_full_export_name())
+        create_coversheet(driver_data[driver].get_cover_page_values())
         coversheet = open(stamp_file,'rb')
         coversheet_pdf = PyPDF2.PdfFileReader(coversheet)
         coversheet_page = coversheet_pdf.getPage(0)
@@ -604,7 +629,7 @@ def create_order_stamp(order_id, first_page, pickup, tag, multi_page, new_box):
     pdf.output(stamp_file, 'F')
     return True
 
-def create_coversheet(text):
+def create_coversheet(values):
     pdf = fpdf.FPDF()
     pdf.add_page()
     pdf.set_font('Courier', 'B', 30)
@@ -613,9 +638,9 @@ def create_coversheet(text):
     x_offset = 60
     y_offset = 125
 
-    for line in text.split('__'):
+    for value in values:
         pdf.set_xy(x_offset, y_offset)
-        pdf.cell(80, 10, line, 0, 0, 'C')
+        pdf.cell(80, 10, value, 0, 0, 'C')
         y_offset += 20
 
     pdf.output(stamp_file, 'F')
