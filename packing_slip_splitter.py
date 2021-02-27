@@ -212,7 +212,8 @@ def load_tags_from_specials_file():
 
             
     else:
-        print ("  WARNING: File not found. No notes will be tagged onto orders.")
+        print ("  ERROR: File not found. No notes will be tagged onto orders.")
+        errors.append(["Unable to find 'SPECIALS.csv'. No order notes/tags (Staff, VIPs, etc.) will be loaded and added to pages."])
 
 
 def find_inputs_from_subdir(suffix):
@@ -463,8 +464,8 @@ def process_pdf_input(pdf_file, filename):
                 actions.append([filename, str(page_num), current_order_id, driver + '.pdf', 'CAUTION: Additional page of previous'])
             elif current_order_id == 'ERROR':
                 pdf_export_files['ERROR'].addPage(page)
-                errors.append('An additional page of the above. Page ' + str(page_num)
-                    + ' from ' + filename + '. Added to Errors.pdf.')
+                errors.append(['An additional page of the above. Page ' + str(page_num)
+                    + ' from ' + filename + '. Added to Errors.pdf.'])
             elif is_pickup:
                 order_data[current_order_id].pages.append(page)
                 order_data[current_order_id].source_pages += "," + str(page_num)
@@ -678,8 +679,8 @@ def create_reports():
             ])
 
             if not order.order_added_to_export:
-                errors.append(order.order_id + ' was never added to an export. Found on page(s) ' 
-                    + order.source_pages + ' in ' + order.pdf_file)
+                errors.append([order.order_id + ' was never added to an export. Found on page(s) ' 
+                    + order.source_pages + ' in ' + order.pdf_file])
     print('  Done!')
 
     if errors:
