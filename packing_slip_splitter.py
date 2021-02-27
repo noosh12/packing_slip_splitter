@@ -386,7 +386,7 @@ def process_pdf_input(pdf_file, filename):
         contains_keywords = all(x in text for x in required_keywords)
 
         # Get text between 'Order ' and 'Date' and remove newlines
-        order_id = text[text.find("Order ")+len("Order "):text.rfind("Date")].replace('\n','')
+        order_id = text[text.find("Order ")+len("Order "):text.rfind("Date")]
         
         # Check to see if order id looks valid
         id_looks_valid = len(order_id) < 12 and "#" in order_id
@@ -452,8 +452,8 @@ def process_pdf_input(pdf_file, filename):
                 if not contains_errors:
                     create_error_pdf_export()
                 pdf_export_files['ERROR'].addPage(page)
-                errors.append('Unable to extract the Order ID from  page. Page ' + str(page_num)
-                    + ' from ' + filename + '. Added to Errors.pdf.')
+                errors.append(['Unable to extract the Order ID from  page. Page ' + str(page_num)
+                    + ' from ' + filename + '. Added to Errors.pdf.'])
         
         # second page
         else:
@@ -507,9 +507,7 @@ def process_shipping_details(rawText, text):
     clean_shipping = re.sub(r'\W+', '', shipping_details).lower()
 
     for phone in tags:
-        # print(clean_shipping)
         if phone in clean_shipping:
-            # print(phone)
             if tags[phone][0] in clean_shipping: # name
                 tag = tags[phone][1] # tag
                 break
