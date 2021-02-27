@@ -7,6 +7,7 @@ import time
 import fpdf
 import resource
 import datetime
+import math
 from string import ascii_letters, digits
 
 class Order:
@@ -24,6 +25,8 @@ class Order:
         self.source_pages = ''
         self.tag = ''
         self.new_box = False
+        self.box_count = 1
+        self.shipping_name = ''
 
         if driver != 'N/A':
             global driver_data
@@ -400,7 +403,7 @@ def process_pdf_input(pdf_file, filename):
                 total_orders_found += 1
                 current_order_id = order_id
 
-                shipping_method, last_name, tag, new_box = process_shipping_details(rawText, text)
+                shipping_method, last_name, tag, new_box, box_count, shipping_name = process_shipping_details(rawText)
 
                 #  order in deliveries csv
                 if order_id in order_data:
@@ -445,6 +448,8 @@ def process_pdf_input(pdf_file, filename):
 
                 order_data[order_id].tag = tag
                 order_data[order_id].new_box = new_box
+                order_data[order_id].box_count = box_count
+                order_data[order_id].shipping_name = shipping_name
 
             # order id is invalid - ERRORED page
             else:
@@ -476,17 +481,30 @@ def process_pdf_input(pdf_file, filename):
     print("\n  New Orders Processed: " + str(total_orders_found-prev_total_order_count))
     print("  Done!")
 
-def process_shipping_details(rawText, text):
+def process_shipping_details(rawText):
+    
+    if 'Qty' in rawText:
+        rawText.split('Qty')[0]
+    text = rawText.replace('\n','')
     last_name = ''
+
     shipping_method = text[text.find("Shipping Method")
-        + len("Shipping Method"):text.rfind("Total Items")].replace('\n','')
+        + len("Shipping Method"):text.rfind("Total Items")]
 
     shipping_details = rawText[rawText.find("Ship To\n")
         + len("Ship To\n"):rawText.rfind("Shipping Method")]
 
+    shipping_name = rawText[rawText.find("Ship To\n")
+        + len("Ship To\n"):rawText.rfind("Tel\n")]
+
     order_tags = text[text.find("Tags")
         + len("Tags"):text.rfind("Qty")]
     
+    item_count = text[text.find("Total Items")
+        + len("Total Items"):text.rfind("Tags")].replace(' ','')
+
+    box_count = math.ceil(float(item_count)/18.0) if item_count.isdigit() else 1
+
     if "\n" in shipping_details:
         for line in shipping_details.split("\n"):
             if any(i.isdigit() for i in line): # first line of address
@@ -515,7 +533,7 @@ def process_shipping_details(rawText, text):
     keywords = ["FTO", "STO", "first"]
     new_box = True if any(x in order_tags for x in keywords) else False
 
-    return shipping_method, last_name, tag, new_box
+    return shipping_method, last_name, tag, new_box, box_count, shipping_name
 
 def process_pdf_outputs():
     n_bar = 10
@@ -540,8 +558,9 @@ def process_pdf_outputs():
             order_count += 1
             total_orders_added += 1
             
+            is_multi_page = (len(order_data[order].pages) > 1 or order_data[order].box_count > 1)
             for page in order_data[order].pages:
-                if create_order_stamp(order, is_first_page, False, order_data[order].tag, len(order_data[order].pages) > 1, order_data[order].new_box):
+                if create_order_stamp(order, is_first_page, False, order_data[order].tag, is_multi_page, order_data[order].new_box):
                     order_stamp = open(stamp_file,'rb')
                     stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
                     stamp_page = stamp_pdf.getPage(0)
@@ -551,6 +570,15 @@ def process_pdf_outputs():
                 is_first_page = False
             order_data[order].order_added_to_export = True
             order_data[order].export_pdf_file = driver_data[driver].get_full_export_name()
+            
+            if order_data[order].box_count > 1:
+                create_multi_box(order_data[order].shipping_name)
+                multi_box = open(stamp_file,'rb')
+                multi_box_pdf = PyPDF2.PdfFileReader(multi_box)
+                multi_box_page = multi_box_pdf.getPage(0)
+
+                for x in range(order_data[order].box_count - 1):
+                    pdf_export_files[driver].addPage(multi_box_page)
         print()
     
     # pickups
@@ -569,7 +597,8 @@ def process_pdf_outputs():
                 sys.stdout.flush()
                 order_count += 1
             
-            if create_order_stamp(order, is_first_page, True, order_data[order].tag, len(order_data[order].pages) > 1, order_data[order].new_box):
+            is_multi_page = (len(order_data[order].pages) > 1 or order_data[order].box_count > 1)
+            if create_order_stamp(order, is_first_page, True, order_data[order].tag, is_multi_page, order_data[order].new_box):
                 order_stamp = open(stamp_file,'rb')
                 stamp_pdf = PyPDF2.PdfFileReader(order_stamp)
                 stamp_page = stamp_pdf.getPage(0)
@@ -579,6 +608,16 @@ def process_pdf_outputs():
             is_first_page = False
         order_data[order].order_added_to_export = True
         order_data[order].export_pdf_file = 'pickups'
+
+        if order_data[order].box_count > 1:
+            create_multi_box(order_data[order].shipping_name)
+            multi_box = open(stamp_file,'rb')
+            multi_box_pdf = PyPDF2.PdfFileReader(multi_box)
+            multi_box_page = multi_box_pdf.getPage(0)
+
+            for x in range(order_data[order].box_count - 1):
+                pdf_export_files['pickups'].addPage(multi_box_page)
+
     print()
         
 
@@ -641,6 +680,27 @@ def create_coversheet(values):
         pdf.set_xy(x_offset, y_offset)
         pdf.cell(80, 10, value, 0, 0, 'C')
         y_offset += 20
+
+    pdf.output(stamp_file, 'F')
+
+def create_multi_box(name):
+    pdf = fpdf.FPDF()
+    pdf.add_page()
+    pdf.set_font('Times', '', 24)
+    pdf.set_xy(2, 1)
+    pdf.cell(40, 10, '/')
+
+    pdf.set_font('Courier', 'B', 10)
+    x_offset = 110
+    y_offset = 10
+
+    for line in name.split('\n'):
+        pdf.set_xy(x_offset, y_offset)
+        pdf.cell(10, 10, line)
+        y_offset += 5
+    
+    pdf.set_xy(x_offset, y_offset + 5)
+    pdf.cell(20, 10, 'Box         of')
 
     pdf.output(stamp_file, 'F')
 
