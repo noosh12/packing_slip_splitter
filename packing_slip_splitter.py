@@ -27,6 +27,7 @@ class Order:
         self.new_box = False
         self.box_count = 1
         self.shipping_name = ''
+        self.last_name = ''
 
         if driver != 'N/A':
             global driver_data
@@ -89,6 +90,7 @@ pdf_input_filenames = []
 
 errors = []
 actions = []
+pickup_order_details = []
 
 order_data = {} # key: order_id =, val: Order object
 driver_data = {} # key: export filename =, val: Driver object
@@ -427,6 +429,7 @@ def process_pdf_input(pdf_file, filename):
                         
                         global pickup_orders
                         pickup_orders.append(last_name.lower() + "__**__" + order_id)
+                        order_data[order_id].last_name = last_name
                         order_data[order_id].pages.append(page)
 
                         if not contains_pickups:
@@ -589,6 +592,8 @@ def process_pdf_outputs():
         total_orders_added += 1
         order = key.split("__**__")[1]
 
+        pickup_order_details.append([str(order_count), order_data[order].shipping_name, order_data[order].last_name])
+
         for page in order_data[order].pages:
             if is_first_page:
                 j = (order_count) / len(pickup_orders)
@@ -608,6 +613,8 @@ def process_pdf_outputs():
             is_first_page = False
         order_data[order].order_added_to_export = True
         order_data[order].export_pdf_file = 'pickups'
+
+        
 
         if order_data[order].box_count > 1:
             create_multi_box(order_data[order].shipping_name)
@@ -739,6 +746,14 @@ def create_reports():
             if not order.order_added_to_export:
                 errors.append([order.order_id + ' was never added to an export. Found on page(s) ' 
                     + order.source_pages + ' in ' + order.pdf_file])
+    print('  Done!')
+
+    print('Creating Pickups Report.')
+    with open(execution_dir + '_pickups_report.csv', 'w') as file:
+        filewriter = csv.writer(file)
+        filewriter.writerow(['ORDER', 'SHIPPING DETAILS', 'CALCULATED LAST NAME', 'PICKED UP'])
+        for pickup in pickup_order_details:
+            filewriter.writerow(pickup)
     print('  Done!')
 
     if errors:
