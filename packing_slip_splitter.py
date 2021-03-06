@@ -575,7 +575,11 @@ def process_pdf_outputs():
             order_data[order].export_pdf_file = driver_data[driver].get_full_export_name()
             
             if order_data[order].box_count > 1:
-                create_multi_box(order_data[order].shipping_name)
+                create_multi_box(
+                    order_data[order].get_driver_stamp()
+                    + "\n\n"
+                    + order_data[order].shipping_name
+                    )
                 multi_box = open(stamp_file,'rb')
                 multi_box_pdf = PyPDF2.PdfFileReader(multi_box)
                 multi_box_page = multi_box_pdf.getPage(0)
@@ -697,16 +701,16 @@ def create_multi_box(name):
     pdf.set_xy(2, 1)
     pdf.cell(40, 10, '/')
 
-    pdf.set_font('Courier', 'B', 10)
+    pdf.set_font('Arial', 'B', 10)
     x_offset = 110
-    y_offset = 10
+    y_offset = 5
 
     for line in name.split('\n'):
         pdf.set_xy(x_offset, y_offset)
         pdf.cell(10, 10, line)
         y_offset += 5
     
-    pdf.set_xy(x_offset, y_offset + 5)
+    pdf.set_xy(x_offset, y_offset)
     pdf.cell(20, 10, 'Box         of')
 
     pdf.output(stamp_file, 'F')
