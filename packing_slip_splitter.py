@@ -732,6 +732,12 @@ def close_pdf_exports():
     print('  Done!')
 
 def create_reports():
+    print("Total Orders found in input pdfs: " + str(total_orders_found))
+    print("Total Orders added to output pdfs: " + str(total_orders_added))
+    if(total_orders_found != total_orders_added):
+        print("ERROR: Order totals do not match!!!")
+        errors.append("ERROR: Order totals do not match!!!")
+
     print('Creating Action Report...')
     with open(execution_dir + '_action_report.csv', 'w') as file:
         filewriter = csv.writer(file)
@@ -812,15 +818,9 @@ def main():
     # Close off pdf inputs
     # Must be done after closing off pdf exports
     close_pdf_inputs()
+    time.sleep(0.25)
 
-    time.sleep(0.25)
     create_reports()
-    time.sleep(0.25)
-    
-    print("Total Orders found in input pdfs: " + str(total_orders_found))
-    print("Total Orders added to output pdfs: " + str(total_orders_added))
-    if(total_orders_found != total_orders_added):
-        print("ERROR: Order totals do not match!!!")
     time.sleep(0.25)
 
     print('--------------------------------------------------------------')
