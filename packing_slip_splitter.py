@@ -366,6 +366,7 @@ def process_pdf_inputs():
 def process_pdf_input(pdf_file, filename):
     current_order_id = "PLACEHOLDER"
     is_pickup = False
+    is_unknown = False
     global total_orders_found
     global total_orders_added
     prev_total_order_count = total_orders_found
@@ -399,6 +400,7 @@ def process_pdf_input(pdf_file, filename):
         # # First page
         if contains_keywords:
             is_pickup = False
+            is_unknown = False
 
             # order id is valid
             if order_id and id_looks_valid:
@@ -438,7 +440,7 @@ def process_pdf_input(pdf_file, filename):
                     # order is UNKNOWN
                     else:
                         total_orders_added += 1
-                        current_order_id = 'UNKNOWN'
+                        is_unknown = True
                         if not contains_unknown:
                             create_unknown_pdf_export()
                         pdf_export_files['UNKNOWN'].addPage(page)
@@ -465,7 +467,7 @@ def process_pdf_input(pdf_file, filename):
         
         # second page
         else:
-            if current_order_id == 'UNKNOWN':
+            if is_unknown:
                 pdf_export_files['UNKNOWN'].addPage(page)
                 order_data[current_order_id].pages.append(page)
                 order_data[current_order_id].source_pages += "," + str(page_num)
