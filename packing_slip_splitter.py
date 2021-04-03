@@ -282,7 +282,9 @@ def process_csv_input(input_filename):
             if order_id not in order_data:
                 order_data[order_id] = Order(order_id, input_filename, driver, stop_no)
             else:
-                print('  ERROR! ' + str(order_id) + ' already exists in file: ' + getattr(order_data[order_id], 'input_file'))
+                print('  ERROR! ' + order_id + ' already exists in file: ' + order_data[order_id].deliveries_file)
+                # print("  ERROR! " + order_id + " found in both: '" + order_data[order_id].deliveries_file + "', and '" + input_filename + "'")
+                errors.append("  ERROR! " + order_id + " found in both: '" + order_data[order_id].deliveries_file + "', and '" + input_filename + "'")
                 print('  exiting...')
                 exit()
             order_count += 1
@@ -620,7 +622,6 @@ def process_pdf_outputs():
         order_data[order].order_added_to_export = True
         order_data[order].export_pdf_file = 'pickups'
 
-        
 
         if order_data[order].box_count > 1:
             create_multi_box(order_data[order].shipping_name)
